@@ -54,14 +54,22 @@ export class Net {
       });
     });
   }
+  private hooked = false;
+  hookArena() {
+    if (this.hooked) return; this.hooked = true;
+    bus.on("arenaWin", (a: any) => { if (this.g.role === "host" && this.conn && a.kind === "domain") this.send({ t: "arenaWin", a: { kind: a.kind, id: a.id, lv: a.lv, t: a.t } }); });
+  }
   wire(c: DataConnection) {
+    this.hookArena();
     c.on("data", (d: any) => { try { this.onMsg(d); } catch (e) { console.warn(e); } });
     c.on("close", () => this.dropped());
     c.on("error", () => this.dropped());
   }
   dropped() {
-    if (!this.conn) return; this.conn = null; const g = this.g;
+    if (!this.conn) return; const old = this.conn; this.conn = null; const g = this.g;
+    try { old.removeAllListeners("data"); } catch { }
     for (const r of g.remotes.values()) r.dispose(); g.remotes.clear();
+    if (g.arena && (g.arena as any).remote) g.leaveArena(false);
     bus.emit("toast", "マルチプレイが終了しました");
     if (g.role === "guest") { for (const e of [...g.enemies.values()]) g.removeEnemy(e); g.role = "solo"; g.pid = 1; g.net = null; this.peer?.destroy(); this.peer = null; if (this.soloPos) g.teleport(this.soloPos.x, this.soloPos.z); g.buildParty(); }
     else if (g.role === "host") { g.role = "solo"; g.buildParty(); /* keep room open for re-join */ }
@@ -85,6 +93,7 @@ export class Net {
   }
   onMsg(d: any) {
     const g = this.g;
+    if (!this.conn || g.role === "solo") return; // 抜けた後に届いた古いメッセージは無視（分身バグ対策）
     switch (d.t) {
       case "hello": {
         const r = g.remotes.get(g.role === "host" ? 2 : 1) || new RemotePlayer(g.gfx.scene, "sora"); r.name = d.name || "友達"; g.remotes.set(g.role === "host" ? 2 : 1, r);
@@ -104,7 +113,7 @@ export class Net {
         for (const a of d.l) {
           const [id, def, lvl, x, y, z, f, hp, mhp, aura, st, fr] = a; seen.add(id);
           let e = g.enemies.get(id); if (!e) { e = g.addEnemy(def, lvl, x, z, id); e.remote = true; e.pos.set(x, y, z); }
-          e.netPos.set(x, y, z); e.face = f; e.hp = hp; e.maxHp = mhp; e.aura = aura ? { el: aura as El, t: 999 } : null; e.state = STR[st] as any; e.frozen = fr ? 1 : 0;
+          e.netPos.set(x, y, z); if (g.arena) e.groundFn = (gx, gz) => g.player.groundAt(gx, gz); e.face = f; e.hp = hp; e.maxHp = mhp; e.aura = aura ? { el: aura as El, t: 999 } : null; e.state = STR[st] as any; e.frozen = fr ? 1 : 0;
         }
         for (const e of [...g.enemies.values()]) if (!seen.has(e.id) && e.state !== "dead") g.removeEnemy(e);
         break;
@@ -119,6 +128,11 @@ export class Net {
       case "tele": g.showTele(new THREE.Vector3(d.p[0], d.p[1], d.p[2]), d.r, d.d); break;
       case "heal": if (d.to === g.pid) g.healParty(d.v, g.pid); break;
       case "shield": if (d.to === g.pid) g.addShield(d.v, g.pid); break;
+      case "domReq": if (g.role === "host") { bus.emit("toast", "友達が秘境に入りたがっています！"); if (!g.arena) g.startDomain(d.id, d.lv); } break;
+      case "arenaIn": if (g.role === "guest") g.joinArena(d.kind, d.id, d.lv, d.c); break;
+      case "arenaOut": if (g.role === "guest" && g.arena) g.leaveArena(false); break;
+      case "arenaWin": if (g.role === "guest") { if (g.arena) g.arena.done = true; bus.emit("arenaWin", d.a); } break;
+      case "toast": bus.emit("toast", d.s); break;
       case "pull": if (g.role === "host") g.pullEnemies(new THREE.Vector3(d.c[0], d.c[1], d.c[2]), d.r, d.k); break;
     }
   }

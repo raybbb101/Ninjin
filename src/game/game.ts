@@ -176,6 +176,7 @@ export class Game {
     bus.emit("toast", msg);
     for (const m of this.members) { m.dead = false; m.hp = m.st.hp * 0.3; }
     this.player.stamina = this.player.stamMax;
+    if (this.arena && this.role !== "solo") { this.player.pos.copy(this.arena.center).add(new THREE.Vector3(0, 0, 10)); this.player.mode = "ground"; return; }
     if (this.arena) { this.leaveArena(false); return; }
     const wp = this.nearestWaypoint(this.player.pos.x, this.player.pos.z) || byId.get("wp_beach")!;
     this.teleport(wp.x + 2, wp.z + 2);
@@ -321,8 +322,17 @@ export class Game {
     }
   }
   // ---------------- arenas (domains & tower) ----------------
+  domainLevel(lv: number) { return [8, 24, 42, 62][lv - 1] + worldLevel() * 2; }
+  startDomain(id: string, lv: number) {
+    const kind = byId.get(id)!.data.kind;
+    const pool = kind === "relic" ? ["bandit", "archer", "shaman", "golem"] : kind === "book" ? ["puff_fire", "puff_water", "wisp_volt", "wisp_star"] : ["golem", "wisp_frost", "puff_frost", "bandit"];
+    const r = new Rng(lv * 7 + id.length), coop = this.role === "host" ? 1 : 0;
+    const waves = [0, 1, 2].slice(0, lv >= 3 ? 3 : 2).map((w) => Array.from({ length: 3 + w + (lv >= 3 ? 1 : 0) + coop }, () => r.pick(pool)));
+    this.enterArena("domain", id, lv, waves, this.domainLevel(lv));
+  }
   enterArena(kind: string, id: string, lv: number, waves: string[][], elvl: number, tlimit = 0) {
-    if (this.role !== "solo") { bus.emit("toast", "マルチプレイ中は入れません"); return; }
+    if (this.role === "guest" || (this.role === "host" && kind !== "domain")) { bus.emit("toast", kind === "domain" ? "ホストだけが秘境を始められます" : "マルチプレイ中は入れません"); return; }
+    if (this.arena) return;
     const center = new THREE.Vector3(0, 60, -760);
     const g = new THREE.Group();
     const plat = new THREE.Mesh(new THREE.CylinderGeometry(20, 16, 4, 24), new THREE.MeshLambertMaterial({ color: kind === "tower" ? 0x5a5a8a : 0x7a6a5a })); plat.position.y = -2; g.add(plat);
@@ -334,17 +344,32 @@ export class Game {
     for (const m of this.members) { m.dead = false; m.hp = m.st.hp; } this.player.stamina = this.player.stamMax;
     this.camT.copy(this.player.pos); this.camYaw = 0;
     bus.emit("arena", true); this.later(1.2, () => this.nextWave());
+    if (this.role === "host") this.net?.send({ t: "arenaIn", kind, id, lv, c: [center.x, center.y, center.z] });
+  }
+  // guest follows the host into a domain: same platform, host runs the enemies
+  joinArena(kind: string, id: string, lv: number, c: number[]) {
+    if (this.arena) return;
+    const center = new THREE.Vector3(c[0], c[1], c[2]), g = new THREE.Group();
+    const plat = new THREE.Mesh(new THREE.CylinderGeometry(20, 16, 4, 24), new THREE.MeshLambertMaterial({ color: 0x7a6a5a })); plat.position.y = -2; g.add(plat);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(19.5, 0.3, 4, 32), new THREE.MeshBasicMaterial({ color: 0x9a70ff })); ring.rotation.x = Math.PI / 2; ring.position.y = 0.1; g.add(ring);
+    g.position.copy(center); this.gfx.scene.add(g);
+    for (const e of [...this.enemies.values()]) this.removeEnemy(e);
+    this.arena = { kind, id, lv, waves: [], wave: 0, t: 0, center, ret: this.player.pos.clone(), mesh: g, elvl: 0, done: false, tlimit: 0, remote: true } as any;
+    this.player.arenaR = 20; this.player.arenaC.copy(center); this.player.pos.copy(center).add(new THREE.Vector3(3, 0, 12)); this.player.mode = "ground";
+    for (const m of this.members) { m.dead = false; m.hp = m.st.hp; } this.player.stamina = this.player.stamMax;
+    this.camT.copy(this.player.pos); this.camYaw = 0; bus.emit("arena", true); bus.emit("toast", "ホストと一緒に秘境に入った！");
   }
   nextWave() {
     const A = this.arena!; A.wave++;
     if (A.wave >= A.waves.length) { A.done = true; bus.emit("arenaWin", A); return; }
-    bus.emit("toast", `ウェーブ ${A.wave + 1} / ${A.waves.length}`);
+    bus.emit("toast", `ウェーブ ${A.wave + 1} / ${A.waves.length}`); this.net?.send({ t: "toast", s: `ウェーブ ${A.wave + 1} / ${A.waves.length}` });
     A.waves[A.wave].forEach((id, i) => { const a = (i / A.waves[A.wave].length) * Math.PI * 2; const e = this.addEnemy(id, A.elvl + (enemyById(id).boss ? 3 : 0), A.center.x + Math.cos(a) * 9, A.center.z - 2 + Math.sin(a) * 6); e.arena = true; e.groundFn = (x, z) => this.player.groundAt(x, z); e.pos.y = A.center.y; e.home.copy(e.pos); this.fxAt("beacon", e.pos, "shadow", 0.8); });
   }
   leaveArena(win: boolean) {
     const A = this.arena; if (!A) return;
     for (const e of [...this.enemies.values()]) this.removeEnemy(e);
     A.mesh.removeFromParent(); this.arena = null; this.player.arenaR = 0;
+    if (this.role === "host") this.net?.send({ t: "arenaOut" });
     this.player.pos.copy(A.ret); this.player.mode = "ground"; this.camT.copy(this.player.pos);
     bus.emit("arena", false); void win;
   }
@@ -433,7 +458,7 @@ export class Game {
     else for (const e of this.enemies.values()) { e.pos.lerp(e.netPos, Math.min(1, dt * 8)); }
     let boss: Enemy | null = null; for (const e of this.enemies.values()) if (e.boss && e.alive && e.pos.distanceToSquared(p.pos) < 40 * 40) boss = e; this.bossActive = boss;
     // arena
-    if (this.arena && !this.arena.done) { this.arena.t += dt; if (this.arena.wave >= 0 && ![...this.enemies.values()].some((e) => e.alive)) { this.arena.wave >= this.arena.waves.length - 1 ? (this.arena.wave++, this.arena.done = true, bus.emit("arenaWin", this.arena)) : this.nextWave(); } if (this.arena.tlimit && this.arena.t > this.arena.tlimit) { bus.emit("toast", "時間切れ…"); this.leaveArena(false); } }
+    if (this.arena && !this.arena.done && !(this.arena as any).remote) { this.arena.t += dt; if (this.arena.wave >= 0 && ![...this.enemies.values()].some((e) => e.alive)) { this.arena.wave >= this.arena.waves.length - 1 ? (this.arena.wave++, this.arena.done = true, bus.emit("arenaWin", this.arena)) : this.nextWave(); } if (this.arena.tlimit && this.arena.t > this.arena.tlimit) { bus.emit("toast", "時間切れ…"); this.leaveArena(false); } }
     // spawn & interact
     this.spawnT -= dt; if (this.spawnT <= 0) { this.spawnT = 0.7; this.spawnAround(); }
     this.updateInteract();

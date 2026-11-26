@@ -407,10 +407,10 @@ export class Menus {
   domain(id: string) {
     const p = byId.get(id)!, kind = p.data.kind, body = h("div", {});
     const desc: Record<string, string> = { book: "天賦の育成素材（教え・導き・哲学）が手に入る", relic: "遺紋（装備）が手に入る", ore: "武器の強化素材とキャラの経験値本が手に入る" };
-    body.append(h("p", {}, desc[kind]), h("p", {}, "何回でも挑戦できます。毎日最初の3回は星晶40ももらえます。"));
+    body.append(h("p", {}, desc[kind]), h("p", {}, "何回でも挑戦できます。毎日最初の3回は星晶40ももらえます。"), this.g.role !== "solo" ? h("p", { class: "gdesc" }, "マルチ中：2人で一緒に入ります。報酬はそれぞれもらえます。") : null);
     [1, 2, 3, 4].forEach((lv) => {
-      const elvl = [8, 24, 42, 62][lv - 1] + P.worldLevel() * 2;
-      body.append(h("div", { class: "daily" }, h("span", {}, `難易度 ${lv}`), h("small", {}, `推奨 Lv.${elvl}`), h("button", { onclick: () => { this.close(); const pool = kind === "relic" ? ["bandit", "archer", "shaman", "golem"] : kind === "book" ? ["puff_fire", "puff_water", "wisp_volt", "wisp_star"] : ["golem", "wisp_frost", "puff_frost", "bandit"]; const r = new Rng(lv * 7 + id.length); const waves = [0, 1, 2].slice(0, lv >= 3 ? 3 : 2).map((w) => Array.from({ length: 3 + w + (lv >= 3 ? 1 : 0) }, () => r.pick(pool))); this.g.enterArena("domain", id, lv, waves, elvl); } }, "挑戦する")));
+      const elvl = this.g.domainLevel(lv);
+      body.append(h("div", { class: "daily" }, h("span", {}, `難易度 ${lv}`), h("small", {}, `推奨 Lv.${elvl}`), h("button", { onclick: () => { this.close(); if (this.g.role === "guest") { this.g.net?.send({ t: "domReq", id, lv }); bus.emit("toast", "ホストに秘境の開始をお願いしました"); } else this.g.startDomain(id, lv); } }, "挑戦する")));
     });
     this.panel(p.name || "秘境", body);
   }
@@ -439,7 +439,7 @@ export class Menus {
       give("coin", 3000 + a.lv * 800); loot.push(`★${stars}（${Math.round(a.t)}秒）`);
     }
     markDirty();
-    setTimeout(() => this.panel("クリア！", h("div", {}, h("div", { class: "loot" }, ...loot.map((l) => h("div", {}, l))), h("div", { class: "btns" }, h("button", { class: "primary", onclick: () => { this.close(); g.leaveArena(true); } }, "外に出る"), a.kind === "domain" ? h("button", { onclick: () => { this.close(); g.leaveArena(true); this.domain(a.id); } }, "もう一度") : null))), 900);
+    setTimeout(() => this.panel("クリア！", h("div", {}, h("div", { class: "loot" }, ...loot.map((l) => h("div", {}, l))), h("div", { class: "btns" }, h("button", { class: "primary", onclick: () => { this.close(); if (g.arena) g.leaveArena(true); } }, "外に出る"), a.kind === "domain" && g.role !== "guest" ? h("button", { onclick: () => { this.close(); g.leaveArena(true); setTimeout(() => g.startDomain(a.id, a.lv), 300); } }, "もう一度") : null))), 900);
   }
   banner(t: string, sub: string) { const b = h("div", { class: "banner" }, h("b", {}, t), h("small", {}, sub)); this.ui.append(b); setTimeout(() => b.classList.add("out"), 3200); setTimeout(() => b.remove(), 4000); }
 }
