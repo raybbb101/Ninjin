@@ -48,4 +48,4 @@ npm run dev     # http://localhost:5173
 npm run build   # dist/ に出力
 ```
 
-`main` ブランチへの push で GitHub Pages に自動公開されます（Settings → Pages → Source を「GitHub Actions」にしてください）。
+GitHub Pages は「GitHub Actions」でも「Deploy from a branch」でも動きます（ブランチ公開のときは自動で `dist/` のビルド済みゲームに移動します）。変更したら `npm run build` して `dist/` もコミットしてください。
