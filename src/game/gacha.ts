@@ -3,7 +3,7 @@ import { WEAPONS } from "../data/weapons";
 import { S, addChar, newWeapon, addItem, useItem, has, markDirty } from "./state";
 import { bus } from "../core/events";
 
-export type BannerId = "standard" | "event" | "weapon";
+export type BannerId = "beginner" | "standard" | "event" | "weapon";
 const LIMITED = ["raika", "kurou", "mikoto", "kagura"];
 export function currentBanner() {
   const week = Math.floor((Date.now() / 86400000 + 3) / 7);
@@ -14,7 +14,11 @@ export function currentBanner() {
   const w4 = WEAPONS.filter((w) => w.rarity === 4).map((w) => w.id);
   return { featured, f4, sigs, fw4: [w4[week % w4.length], w4[(week + 3) % w4.length]], endsIn: 7 - ((Date.now() / 86400000 + 3) % 7) };
 }
+export const BEGINNER_MAX = 50;
+export const BEGINNER_POOL = () => CHARS.filter((c) => c.rarity === 5 && !c.starter).map((c) => c.id);
+export function beg() { const G: any = S.gacha; G.beg ||= { sel: "", n: 0, done: false }; return G.beg as { sel: string; n: number; done: boolean }; }
 export const BANNER_INFO: Record<BannerId, { name: string; ticket: string; desc: string }> = {
+  beginner: { name: "はじめての願い", ticket: "ticket_s", desc: "最大50回。50回以内に、自分で選んだ★5キャラが必ず1人手に入る！" },
   standard: { name: "星降る願い", ticket: "ticket_s", desc: "常設の祈願。★5キャラ・★5武器がランダムで登場。" },
   event: { name: "期間限定・キャラ祈願", ticket: "ticket_g", desc: "期間限定★5キャラの登場確率がアップ！" },
   weapon: { name: "神鍛の願い", ticket: "ticket_g", desc: "持ち武器（★5）の登場確率がアップ！" },
@@ -22,16 +26,17 @@ export const BANNER_INFO: Record<BannerId, { name: string; ticket: string; desc:
 export interface Pull { kind: "char" | "weapon"; id: string; rarity: number; isNew?: boolean; cons?: number; dust: number }
 const rnd = () => Math.random();
 const pick = <T,>(a: T[]) => a[Math.floor(rnd() * a.length)];
-function rate5(b: BannerId, p: number) { if (b === "weapon") return p >= 80 ? 1 : p >= 63 ? 0.007 + (p - 62) * 0.07 : 0.007; return p >= 90 ? 1 : p >= 74 ? 0.006 + (p - 73) * 0.06 : 0.006; }
+function rate5(b: BannerId, p: number) { if (b === "beginner") return p >= BEGINNER_MAX ? 1 : 0.006 + (p >= 30 ? (p - 29) * 0.04 : 0); if (b === "weapon") return p >= 80 ? 1 : p >= 63 ? 0.007 + (p - 62) * 0.07 : 0.007; return p >= 90 ? 1 : p >= 74 ? 0.006 + (p - 73) * 0.06 : 0.006; }
 export function pull(b: BannerId): Pull {
   const G = S.gacha, bn = currentBanner();
-  G.p5[b]++; G.p4[b]++;
+  G.p5[b] = (G.p5[b] || 0) + 1; G.p4[b] = (G.p4[b] || 0) + 1; if (b === "beginner") beg().n++;
   let rarity = 3;
   if (rnd() < rate5(b, G.p5[b])) rarity = 5; else if (G.p4[b] >= 10 || rnd() < 0.051) rarity = 4;
   let kind: "char" | "weapon" = "weapon", id = "";
   if (rarity === 5) {
     G.p5[b] = 0;
-    if (b === "event") { if (G.g.event || rnd() < 0.5) { id = bn.featured; G.g.event = false; } else { id = pick(CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter)).id; G.g.event = true; } kind = "char"; }
+    if (b === "beginner") { id = beg().sel; kind = "char"; beg().done = true; }
+    else if (b === "event") { if (G.g.event || rnd() < 0.5) { id = bn.featured; G.g.event = false; } else { id = pick(CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter)).id; G.g.event = true; } kind = "char"; }
     else if (b === "weapon") { if (G.g.weapon || rnd() < 0.75) { id = pick(bn.sigs); G.g.weapon = false; } else { id = pick(WEAPONS.filter((w) => w.rarity === 5 && w.standard)).id; G.g.weapon = true; } }
     else { if (rnd() < 0.5) { kind = "char"; id = pick(CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter)).id; } else id = pick(WEAPONS.filter((w) => w.rarity === 5 && w.standard)).id; }
   } else if (rarity === 4) {
@@ -49,10 +54,11 @@ export function pull(b: BannerId): Pull {
   markDirty(); return res;
 }
 export function wish(b: BannerId, n: number): Pull[] | string {
+  if (b === "beginner") { const B = beg(); if (!B.sel) return "先に、もらいたい★5キャラを選んでね"; if (B.done) return "はじめての願いはもう終わりました"; if (B.n + n > BEGINNER_MAX) return `残りは ${BEGINNER_MAX - B.n} 回です`; }
   const t = BANNER_INFO[b].ticket, have = has(t), need = Math.max(0, n - have), gem = need * 160;
   if (has("gem") < gem) return `${b === "standard" ? "銀" : "金"}の願い札が足りません（星晶 ${gem} 個で交換できます）`;
   if (need) useItem("gem", gem);
   useItem(t, n - need);
-  const out: Pull[] = []; for (let i = 0; i < n; i++) out.push(pull(b));
+  const out: Pull[] = []; for (let i = 0; i < n; i++) { if (b === "beginner" && beg().done && i > 0) { addItem(t, 1); continue; } out.push(pull(b)); }
   bus.emit("gacha"); return out;
 }

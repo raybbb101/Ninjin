@@ -8,7 +8,10 @@ import { SLOTS, SLOT_NAME, STAT_NAME, FLAT, SETS, setById } from "../data/relics
 import { EL_INFO, REACTIONS, RESONANCE } from "../data/elements";
 import { statsOf, ASC_CAP, weaponAtk, weaponSub, relicMain, relicMaxLvl, partyResonance, setCounts, weaponMaxAsc } from "../game/stats";
 import * as P from "../game/progression";
-import { wish, currentBanner, BANNER_INFO, type BannerId, type Pull } from "../game/gacha";
+import { wish, currentBanner, BANNER_INFO, beg, BEGINNER_MAX, BEGINNER_POOL, type BannerId, type Pull } from "../game/gacha";
+import { consDesc } from "../data/cons";
+import { MAILS } from "../data/mail";
+import { charBase } from "../game/stats";
 import { portrait, fullBody, weaponIcon } from "../gfx/charsprite";
 import { mapImage } from "./mapimg";
 import { POIS, byId } from "../world/worldgen";
@@ -22,7 +25,7 @@ import { enemyById } from "../data/enemies";
 const fmtStat = (k: string, v: number) => (FLAT.has(k) ? fmt(v) : pct(v));
 const itemName = (id: string) => itemById(id)?.name || id;
 export class Menus {
-  ui = $("#ui"); stack: string[] = []; cur: HTMLElement | null = null; selChar = ""; tab = "info"; bagTab = "weapon"; gTab: BannerId = "event"; onChange: (() => void) | null = null;
+  ui = $("#ui"); stack: string[] = []; cur: HTMLElement | null = null; selChar = ""; tab = "info"; bagTab = "weapon"; gTab: BannerId = "beginner"; onChange: (() => void) | null = null;
   constructor(public g: Game) {
     bus.on("dialog", (lines: [string, string][], done: () => void) => this.dialog(lines, done));
     bus.on("npc", (id: string) => this.npc(id));
@@ -42,14 +45,14 @@ export class Menus {
   }
   open(name: string, arg?: any) {
     if (this.g.dialogOpen) return;
-    const f: any = { main: () => this.main(), chars: () => this.chars(arg), party: () => this.partyMenu(), gacha: () => this.gacha(), bag: () => this.bag(), quest: () => this.quests(), map: () => this.map(), coop: () => this.coop(), settings: () => this.settings(), shop: () => this.shop() }[name];
+    const f: any = { mail: () => this.mail(), main: () => this.main(), chars: () => this.chars(arg), party: () => this.partyMenu(), gacha: () => this.gacha(), bag: () => this.bag(), quest: () => this.quests(), map: () => this.map(), coop: () => this.coop(), settings: () => this.settings(), shop: () => this.shop() }[name];
     f?.();
   }
   // ---------------- main ----------------
   main() {
     const g = h("div", { class: "grid" });
     const add = (k: string, ic: string, label: string) => g.append(h("div", { class: "gi", onclick: () => this.open(k) }, h("b", {}, ic), h("span", {}, label)));
-    add("chars", "☺", "キャラクター"); add("party", "◎", "編成"); add("gacha", "✦", "祈願"); add("bag", "▣", "バッグ"); add("quest", "!", "任務・依頼"); add("map", "◈", "マップ"); add("coop", "⇄", "マルチプレイ"); add("settings", "⚙", "設定");
+    add("chars", "☺", "キャラクター"); add("party", "◎", "編成"); add("gacha", "✦", "祈願"); add("bag", "▣", "バッグ"); add("quest", "!", "任務・依頼"); add("map", "◈", "マップ"); add("coop", "⇄", "マルチプレイ"); add("mail", "✉", "メール"); add("settings", "⚙", "設定");
     const need = P.arExpNeed(S.ar);
     this.panel("メニュー", h("div", {}, h("div", { class: "arbox" }, h("div", {}, `冒険ランク ${S.ar}　世界ランク ${P.worldLevel()}`), h("div", { class: "bar" }, h("i", { style: `width:${(S.arExp / need) * 100}%` })), h("small", {}, `${fmt(S.arExp)} / ${fmt(need)}　・　プレイ時間 ${Math.floor(S.stats.play / 3600)}時間${Math.floor((S.stats.play % 3600) / 60)}分`)), g));
   }
@@ -103,8 +106,7 @@ export class Menus {
         box.append(h("div", { class: "tal" }, h("div", { class: "tn" }, `${names[i]}　Lv.${l}${(i === 1 && cs.cons >= 3) || (i === 2 && cs.cons >= 5) ? "+3" : ""}`), h("small", {}, desc[i]), c ? h("div", {}, cs.asc < req ? h("small", { class: "lack" }, `突破${req}段階目が必要`) : costEl(c), h("button", { disabled: cs.asc < req || !P.canPay(c), onclick: () => { P.upTalent(cs, i); re(); } }, "レベルアップ")) : h("small", {}, "最大レベル")));
       });
     } else if (this.tab === "cons") {
-      const C = ["元素スキルのダメージ+20%", "会心率+10%", "元素スキルのレベル+3", "攻撃力+20%", "元素爆発のレベル+3", "与えるダメージ+30%"];
-      C.forEach((t, i) => box.append(h("div", { class: "cons" + (cs.cons > i ? " on" : "") }, h("b", {}, `第${i + 1}重`), t)));
+      for (let i = 0; i < 6; i++) { const c = consDesc(id, i); box.append(h("div", { class: "cons" + (cs.cons > i ? " on" : "") }, h("b", {}, `第${i + 1}重「${c.name}」`), h("div", {}, c.desc))); }
       box.append(h("small", {}, "同じキャラクターを祈願で引くと覚醒が進みます。"));
     }
     return box;
@@ -179,16 +181,21 @@ export class Menus {
     const body = h("div", { class: "gacha" }); this.panel("祈願", body, "wide");
     const render = () => {
       clear(body); const bn = currentBanner();
-      const tabs = h("div", { class: "tabs" }); for (const b of ["event", "weapon", "standard"] as BannerId[]) tabs.append(h("div", { class: "tab" + (this.gTab === b ? " on" : ""), onclick: () => { this.gTab = b; render(); } }, BANNER_INFO[b].name));
+      const B = beg(); if (this.gTab === "beginner" && B.done) this.gTab = "event";
+      const tabs = h("div", { class: "tabs" }); for (const b of [...(B.done ? [] : ["beginner"]), "event", "weapon", "standard"] as BannerId[]) tabs.append(h("div", { class: "tab" + (this.gTab === b ? " on" : ""), onclick: () => { this.gTab = b; render(); } }, BANNER_INFO[b].name));
       const info = BANNER_INFO[this.gTab], tk = info.ticket;
       let feat: HTMLElement;
-      if (this.gTab === "event") { const d = charById(bn.featured); const art = fullBody(d.look, d.weapon, 5, d.id); feat = h("div", { class: "feat", style: `--c:${EL_INFO[d.el].color}` }, art, h("div", {}, h("div", { class: "fname" }, d.name), h("div", {}, d.title), h("div", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("small", {}, "★4 確率アップ：" + bn.f4.map((x) => charById(x).name).join("・")), h("small", {}, `残り ${Math.ceil(bn.endsIn)} 日`))); }
+      if (this.gTab === "beginner") {
+        const sel = B.sel ? charById(B.sel) : null, grid = h("div", { class: "begsel" });
+        for (const id of BEGINNER_POOL()) { const d = charById(id); grid.append(h("div", { class: "bs" + (B.sel === id ? " on" : ""), style: `--c:${EL_INFO[d.el].color}`, onclick: () => { B.sel = id; markDirty(); render(); } }, portrait(d.look, d.weapon, 2, d.id), h("span", {}, d.name), h("small", { class: "info", onclick: (e: Event) => { e.stopPropagation(); this.charInfo(id, () => this.gacha()); } }, "詳細"))); }
+        feat = h("div", { class: "feat", style: `--c:${sel ? EL_INFO[sel.el].color : "#9ab8ff"}` }, h("div", { style: "flex:1" }, h("div", { class: "fname" }, sel ? `選択中：${sel.name}` : "もらいたい★5キャラを選んでね"), h("small", {}, `残り ${BEGINNER_MAX - B.n} 回　（${BEGINNER_MAX}回以内に必ず手に入る）`), grid));
+      } else if (this.gTab === "event") { const d = charById(bn.featured); const art = fullBody(d.look, d.weapon, 5, d.id); feat = h("div", { class: "feat", style: `--c:${EL_INFO[d.el].color}` }, art, h("div", {}, h("div", { class: "fname" }, d.name), h("div", {}, d.title), h("div", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("small", {}, "★4 確率アップ：" + bn.f4.map((x) => charById(x).name).join("・")), h("small", {}, `残り ${Math.ceil(bn.endsIn)} 日`))); }
       else if (this.gTab === "weapon") feat = h("div", { class: "feat", style: "--c:#ffd84a" }, h("div", {}, h("div", { class: "fname" }, bn.sigs.map((x) => weaponById(x).name).join(" / ")), h("small", {}, "持ち武器の登場確率アップ！"), h("small", {}, "★4 確率アップ：" + bn.fw4.map((x) => weaponById(x).name).join("・"))));
       else feat = h("div", { class: "feat", style: "--c:#9ab8ff" }, h("div", {}, h("div", { class: "fname" }, "星降る願い"), h("small", {}, "★5：" + CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter).map((c) => c.name).join("・") + "・常設★5武器")));
-      const pity = S.gacha.p5[this.gTab], hard = this.gTab === "weapon" ? 80 : 90;
+      const pity = S.gacha.p5[this.gTab] || 0, hard = this.gTab === "weapon" ? 80 : this.gTab === "beginner" ? BEGINNER_MAX : 90;
       body.append(tabs, feat, h("p", { class: "gdesc" }, info.desc, h("br"), `★5まであと最大 ${hard - pity} 回${this.gTab !== "standard" && S.gacha.g[this.gTab] ? "（次の★5は確定でピックアップ！）" : ""}`),
         h("div", { class: "gbtns" }, h("div", { class: "have" }, `${itemName(tk)} ${has(tk)}　星晶 ${fmt(has("gem"))}　星屑 ${has("dust")}`), h("button", { onclick: () => this.doWish(1) }, "1回祈願"), h("button", { class: "primary", onclick: () => this.doWish(10) }, "10回祈願")),
-        h("button", { class: "sub", onclick: () => this.gHist() }, "履歴"));
+        h("div", { class: "btns" }, h("button", { class: "sub", onclick: () => this.gHist() }, "履歴"), h("button", { class: "sub", onclick: () => this.gDetail(this.gTab) }, "詳細・確率")));
     };
     this.onChange = render; render();
   }
@@ -218,6 +225,39 @@ export class Menus {
       g.append(h("div", { class: "wr r" + r.rarity, style: `--r:${RCOL[r.rarity]}` }, art, h("div", {}, nm), h("small", {}, stars(r.rarity)), r.isNew ? h("b", { class: "new" }, "NEW") : null, r.cons && r.cons > 0 ? h("small", {}, `覚醒${r.cons}`) : null, r.dust ? h("small", {}, `星屑+${r.dust}`) : null));
     }
     this.panel("祈願結果", h("div", {}, g, h("button", { class: "primary", onclick: () => this.gacha() }, "OK")), "wide");
+  }
+  gDetail(b: BannerId) {
+    const bn = currentBanner(), body = h("div", { class: "gdetail" });
+    const rate = b === "weapon" ? ["★5：0.7%（63回目から上がり、80回目で必ず出る）", "★4：6.0%（10回ごとに必ず1つ）", "★5のうち75%がピックアップ武器。外れたら次の★5はピックアップ確定"] : b === "beginner" ? ["★5：0.6%（30回目から上がり、50回目で必ず出る）", "★5は必ず自分で選んだキャラクター", "★4：5.1%（10回ごとに必ず1つ）"] : b === "event" ? ["★5：0.6%（74回目から上がり、90回目で必ず出る）", "★5のうち50%がピックアップキャラ。外れたら次の★5はピックアップ確定", "★4：5.1%（10回ごとに必ず1つ、50%でピックアップ★4キャラ）"] : ["★5：0.6%（74回目から上がり、90回目で必ず出る）", "★5キャラと★5武器が半分ずつ", "★4：5.1%（10回ごとに必ず1つ）"];
+    body.append(h("h3", {}, "確率"), ...rate.map((r) => h("div", { class: "rrow" }, r)), h("div", { class: "rrow" }, "★3：残り（★3武器）"), h("div", { class: "rrow" }, `いまの★5天井カウント：${S.gacha.p5[b] || 0}回`));
+    const chars = b === "event" ? [bn.featured, ...bn.f4] : b === "beginner" ? BEGINNER_POOL() : b === "standard" ? CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter).map((c) => c.id) : [];
+    if (chars.length) { body.append(h("h3", {}, "登場するキャラクター（タップで詳細）")); const g = h("div", { class: "plist" }); for (const id of chars) { const d = charById(id); g.append(h("div", { class: "ci", style: `--r:${RCOL[d.rarity]}`, onclick: () => this.charInfo(id, () => this.gDetail(b)) }, portrait(d.look, d.weapon, 2, d.id), h("span", {}, d.name), h("i", { style: `background:${EL_INFO[d.el].color}` }))); } body.append(g); }
+    if (b === "weapon" || b === "standard") { body.append(h("h3", {}, "★5武器")); const ws = b === "weapon" ? bn.sigs : WEAPONS.filter((w) => w.rarity === 5 && w.standard).map((w) => w.id); for (const id of ws) body.append(this.weaponCard({ id, lvl: 90, asc: 6, ref: 1 })); }
+    body.append(h("button", { onclick: () => this.gacha() }, "もどる"));
+    this.panel(BANNER_INFO[b].name + "：詳細", body, "wide");
+  }
+  charInfo(id: string, back?: () => void) {
+    const d = charById(id), b90 = charBase(d, 90, 6), body = h("div", { class: "cinfo" });
+    const art = fullBody(d.look, d.weapon, 4, d.id); art.className = "fullart";
+    body.append(h("div", { class: "chead" }, art, h("div", {}, h("div", { class: "cname" }, d.name, h("small", { style: `color:${RCOL[d.rarity]}` }, " " + stars(d.rarity))), h("div", { class: "ctitle" }, d.title), h("div", { class: "ctags" }, h("span", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("span", {}, WEAPON_TYPE_NAME[d.weapon]), d.limited ? h("span", {}, "期間限定") : null), h("p", { class: "bio" }, d.bio))));
+    body.append(h("h3", {}, "Lv.90のステータス（武器・遺紋なし）"), h("div", { class: "ctab" }, ...[["HP", fmt(b90.hp)], ["攻撃力", fmt(b90.atk)], ["防御力", fmt(b90.def)], ["突破ボーナス", `${STAT_NAME[d.asc.k] || d.asc.k} +${FLAT.has(d.asc.k) ? d.asc.v : pct(d.asc.v)}`]].map(([k, v]) => h("div", { class: "row" }, h("span", {}, k), h("b", {}, v)))));
+    body.append(h("h3", {}, "天賦"), h("div", { class: "tal" }, h("div", { class: "tn" }, "通常攻撃"), h("small", {}, WEAPON_TYPE_NAME[d.weapon] + "の連続攻撃。長押しで重撃、空中で落下攻撃。")), h("div", { class: "tal" }, h("div", { class: "tn" }, `元素スキル「${d.skill.name}」`), h("small", {}, `${d.skill.desc}（クールタイム${d.skill.cd}秒）`)), h("div", { class: "tal" }, h("div", { class: "tn" }, `元素爆発「${d.burst.name}」`), h("small", {}, `${d.burst.desc}（元素エネルギー${d.burst.cost}）`)));
+    body.append(h("h3", {}, "覚醒"));
+    const have = S.chars[id]?.cons ?? -1;
+    for (let i = 0; i < 6; i++) { const c = consDesc(id, i); body.append(h("div", { class: "cons" + (have > i ? " on" : "") }, h("b", {}, `第${i + 1}重「${c.name}」`), h("div", {}, c.desc))); }
+    if (back) body.append(h("button", { onclick: back }, "もどる"));
+    this.panel(d.name + "の詳細", body, "wide");
+  }
+  mail() {
+    const body = h("div", { class: "mail" }); this.panel("メール", body, "wide");
+    const render = () => {
+      clear(body);
+      for (const m of MAILS) {
+        const got = S.mail[m.id] === 2;
+        body.append(h("div", { class: "mitem" + (got ? " got" : "") }, h("div", { class: "mh" }, h("b", {}, m.title), h("small", {}, `${m.from}　${m.date}`)), h("p", {}, ...m.body.split("\n").flatMap((l, i) => (i ? [h("br"), l] : [l]))), h("div", { class: "cost" }, ...Object.entries(m.items).map(([k, v]) => h("span", {}, `${itemName(k)} ×${fmt(v)}`))), h("button", { class: got ? "" : "primary", disabled: got, onclick: () => { for (const [k, v] of Object.entries(m.items)) addItem(k, v); S.mail[m.id] = 2; markDirty(); persist(true); bus.emit("toast", "受け取りました！"); render(); } }, got ? "受け取り済み" : "受け取る")));
+      }
+    };
+    this.onChange = render; render();
   }
   gHist() { const l = h("div", { class: "hist" }); for (const x of S.gacha.hist.slice(0, 80)) { const nm = charById(x.id)?.name || weaponById(x.id)?.name; l.append(h("div", { style: `color:${RCOL[x.r]}` }, `${new Date(x.t).toLocaleString("ja-JP")}　${BANNER_INFO[x.b as BannerId].name}　${nm} ${stars(x.r)}`)); } this.panel("祈願履歴", h("div", {}, l, h("button", { onclick: () => this.gacha() }, "もどる"))); }
   // ---------------- bag ----------------
@@ -361,13 +401,13 @@ export class Menus {
     for (const m of g.members) { m.dead = false; m.hp = m.st.hp; } g.player.stamina = g.player.stamMax;
     const lv = S.statues[id] || 0, body = h("div", {});
     body.append(h("p", {}, "星の像に祈ると、仲間のHPが全回復します。"), h("p", {}, `この像のレベル：${lv} / 10　　星の欠片 ${has("shard")}個`), h("p", {}, `スタミナ上限：${S.stamMax}`));
-    body.append(h("button", { class: "primary", disabled: lv >= 10 || has("shard") < 4, onclick: () => { if (useItem("shard", 4)) { S.statues[id] = lv + 1; S.stamMax += 15; g.player.stamMax = S.stamMax; addItem("gem", 40); addItem("exp2", 3); P.addAR(100); markDirty(); bus.emit("toast", "スタミナの上限が増えた！"); this.statue(id); } } }, "星の欠片を4つ捧げる"));
+    body.append(h("button", { class: "primary", disabled: lv >= 10 || has("shard") < 4, onclick: () => { if (useItem("shard", 4)) { S.statues[id] = lv + 1; S.stamMax += 15; g.player.stamMax = S.stamMax; addItem("gem", 60); addItem("exp2", 3); P.addAR(100); markDirty(); bus.emit("toast", "スタミナの上限が増えた！"); this.statue(id); } } }, "星の欠片を4つ捧げる"));
     this.panel("星の像", body);
   }
   domain(id: string) {
     const p = byId.get(id)!, kind = p.data.kind, body = h("div", {});
     const desc: Record<string, string> = { book: "天賦の育成素材（教え・導き・哲学）が手に入る", relic: "遺紋（装備）が手に入る", ore: "武器の強化素材とキャラの経験値本が手に入る" };
-    body.append(h("p", {}, desc[kind]), h("p", {}, "何回でも挑戦できます。"));
+    body.append(h("p", {}, desc[kind]), h("p", {}, "何回でも挑戦できます。毎日最初の3回は星晶40ももらえます。"));
     [1, 2, 3, 4].forEach((lv) => {
       const elvl = [8, 24, 42, 62][lv - 1] + P.worldLevel() * 2;
       body.append(h("div", { class: "daily" }, h("span", {}, `難易度 ${lv}`), h("small", {}, `推奨 Lv.${elvl}`), h("button", { onclick: () => { this.close(); const pool = kind === "relic" ? ["bandit", "archer", "shaman", "golem"] : kind === "book" ? ["puff_fire", "puff_water", "wisp_volt", "wisp_star"] : ["golem", "wisp_frost", "puff_frost", "bandit"]; const r = new Rng(lv * 7 + id.length); const waves = [0, 1, 2].slice(0, lv >= 3 ? 3 : 2).map((w) => Array.from({ length: 3 + w + (lv >= 3 ? 1 : 0) }, () => r.pick(pool))); this.g.enterArena("domain", id, lv, waves, elvl); } }, "挑戦する")));
@@ -376,7 +416,7 @@ export class Menus {
   }
   tower() {
     const body = h("div", {});
-    body.append(h("p", {}, "星の塔：強い敵を制限時間内に倒そう。早く倒すほど星がもらえます（星1つにつき星晶50、初回のみ）。"));
+    body.append(h("p", {}, "星の塔：強い敵を制限時間内に倒そう。早く倒すほど星がもらえます（星1つにつき星晶100、初回のみ）。"));
     for (let f = 1; f <= 12; f++) {
       const best = S.tower["f" + f] || 0, unlocked = f === 1 || (S.tower["f" + (f - 1)] || 0) > 0, elvl = 15 + f * 6;
       body.append(h("div", { class: "daily" }, h("span", {}, `第${f}層`), h("small", {}, `Lv.${elvl}　${"★".repeat(best)}${"☆".repeat(3 - best)}`), h("button", { disabled: !unlocked, onclick: () => { this.close(); const r = new Rng(f * 131); const pool = ["bandit", "archer", "shaman", "golem", "puff_fire", "puff_water", "puff_volt", "puff_frost", "wisp_star", "wisp_shadow"]; const waves = [Array.from({ length: 3 + (f >> 2) }, () => r.pick(pool)), f % 4 === 0 ? [["boss_puff", "boss_golem", "boss_wisp", "boss_knight"][(f / 4 - 1) % 4]] : Array.from({ length: 3 + (f >> 2) }, () => r.pick(pool))]; this.g.enterArena("tower", "f" + f, f, waves, elvl, 180); } }, "挑戦")));
@@ -392,9 +432,10 @@ export class Menus {
       if (kind === "book") { const b = rng.pick(["a", "b", "c"]); give(`book_${b}1`, 2 + lv); if (lv >= 2) give(`book_${b}2`, lv); if (lv >= 3) give(`book_${b}3`, lv - 2); }
       if (kind === "ore") { give("ore2", 2 + lv * 2); give("exp2", 2 + lv); if (lv >= 3) { give("ore3", lv - 2); give("exp3", lv - 2); } }
       P.addAR(60 + lv * 20); bus.emit("daily", "domain", 1); domainStep(g, a.id);
+      const dk = new Date().toDateString(); const dd = (S.flags.domDay ||= { d: dk, n: 0 }); if (dd.d !== dk) { dd.d = dk; dd.n = 0; } if (dd.n < 3) { dd.n++; give("gem", 40); }
     } else {
       const stars = a.t < 60 ? 3 : a.t < 100 ? 2 : 1, prev = S.tower[a.id] || 0;
-      if (stars > prev) { give("gem", 50 * (stars - prev)); S.tower[a.id] = stars; }
+      if (stars > prev) { give("gem", 100 * (stars - prev)); S.tower[a.id] = stars; }
       give("coin", 3000 + a.lv * 800); loot.push(`★${stars}（${Math.round(a.t)}秒）`);
     }
     markDirty();

@@ -19,8 +19,9 @@ export class Enemy {
   constructor(public scene: THREE.Scene, defId: string, lvl: number, x: number, z: number, idOverride?: number) {
     this.id = idOverride ?? NEXT_ID++; if (idOverride && idOverride >= NEXT_ID) NEXT_ID = idOverride + 1;
     const d = (this.def = enemyById(defId)); this.lvl = lvl; this.body = d.body;
-    const hpm = Math.pow(1 + lvl * 0.115, 1.95), atm = Math.pow(1 + lvl * 0.1, 1.5);
-    this.maxHp = this.hp = d.hp * hpm * 0.55; this.atk = d.atk * atm;
+    // 1レベル～90レベルまでなだらかに強くなる（バランス調整 v0.2）
+    const hpm = Math.pow(1 + lvl * 0.06, 1.6) * (1 + Math.pow(lvl / 60, 3)), atm = Math.pow(1 + lvl * 0.08, 1.45);
+    this.maxHp = this.hp = d.hp * hpm * 0.4; this.atk = d.atk * atm * (d.boss ? 0.8 : 1);
     this.innate = d.el && d.body !== "humanoid" ? d.el : null; if (this.innate) this.aura = { el: this.innate, t: 999 };
     const col = d.el ? EL_INFO[d.el].color : "#a8a8b0";
     if (d.body === "puff") this.bb = new Billboard(puffAtlas(col, !!d.boss), EFW.puff, EFH.puff, d.scale, EFH.puff - 2);

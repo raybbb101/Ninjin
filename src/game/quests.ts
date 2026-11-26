@@ -37,7 +37,7 @@ function advance(g: Game, st: Step) {
     busy = false;
     S.quest.step++;
     if (S.quest.step >= q.steps.length) {
-      const r = q.reward; if (r.gem) addItem("gem", r.gem); if (r.coin) addItem("coin", r.coin); if (r.items) for (const k in r.items) addItem(k, r.items[k]); if (r.ar) addAR(r.ar);
+      const r = q.reward; if (r.gem) addItem("gem", r.gem * 2); if (r.coin) addItem("coin", r.coin); if (r.items) for (const k in r.items) addItem(k, r.items[k]); if (r.ar) addAR(r.ar);
       if (r.char) { addChar(r.char); }
       bus.emit("questDone", q, r);
       S.quest.main++; S.quest.step = 0;
@@ -67,10 +67,10 @@ export function dailyEvent(type: string, n: number) {
 }
 export function claimDaily(i: number) {
   const t = S.daily.tasks[i]; if (!t || t.n < t.goal || S.daily.claimed[i]) return false;
-  S.daily.claimed[i] = true; addItem("gem", 50); addItem("coin", 8000); addItem("exp2", 3); addAR(150); markDirty(); return true;
+  S.daily.claimed[i] = true; addItem("gem", 60); addItem("coin", 8000); addItem("exp2", 3); addAR(150); markDirty(); return true;
 }
 export function claimDailyBonus() {
   if (S.daily.bonus || !S.daily.claimed.every((c) => c)) return false;
-  S.daily.bonus = true; addItem("gem", 100); addItem("exp3", 2); addItem("ore2", 4); addAR(300); markDirty(); return true;
+  S.daily.bonus = true; addItem("gem", 120); addItem("exp3", 2); addItem("ore2", 4); addAR(300); markDirty(); return true;
 }
 export { MAIN };

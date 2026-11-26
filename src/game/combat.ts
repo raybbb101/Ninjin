@@ -6,10 +6,12 @@ import type { Member } from "./member";
 import type { Game } from "./game";
 import { clamp, angDiff } from "../core/math";
 import { heightAt } from "../world/terrain";
+import { consVal } from "../data/cons";
 import { bus } from "../core/events";
 
 export type Cat = "na" | "ca" | "skill" | "burst" | "plunge" | "react";
-export interface Hit { src: string; pid: number; atk: number; mv: number; el: DmgEl; cat: Cat; cr: number; cd: number; bonus: number; em: number; lvl: number; rb: number; strong?: boolean; icd: string; icdT: number; kb?: number; crit?: boolean }
+export interface Hit { shred?: number;
+ src: string; pid: number; atk: number; mv: number; el: DmgEl; cat: Cat; cr: number; cd: number; bonus: number; em: number; lvl: number; rb: number; strong?: boolean; icd: string; icdT: number; kb?: number; crit?: boolean }
 export const NA: Record<string, { mv: number[]; dur: number[]; r: number; ca: number; caSt: number; ranged?: boolean }> = {
   sword: { mv: [0.48, 0.46, 0.6, 0.72], dur: [0.3, 0.3, 0.34, 0.45], r: 2.3, ca: 1.3, caSt: 20 },
   claymore: { mv: [0.8, 0.78, 0.92, 1.2], dur: [0.5, 0.5, 0.55, 0.7], r: 2.8, ca: 1.7, caSt: 25 },
@@ -20,10 +22,11 @@ export const NA: Record<string, { mv: number[]; dur: number[]; r: number; ca: nu
 export const reactBase = (lvl: number) => 18 + lvl * 9 + Math.pow(lvl / 10, 2) * 14;
 export function makeHit(g: Game, m: Member, mv: number, el: DmgEl, cat: Cat, icd: string, icdT: number, extra: Partial<Hit> = {}): Hit {
   const st = m.st, buffAtk = g.buffAtk > 0 ? g.buffAtkVal : 0;
-  let bonus = st.dmg[el] + (st.dmg[cat] || 0) + (m.infuse && (cat === "na" || cat === "ca" || cat === "plunge") ? m.infuse.bonus : 0);
-  const cr = st.cr + (g.eclipse > 0 ? 0.2 : 0);
+  let bonus = st.dmg[el] + (st.dmg[cat] || 0) + (m.infuse && (cat === "na" || cat === "ca" || cat === "plunge") ? m.infuse.bonus : 0) + (g.partyDmgT > 0 ? g.partyDmgV : 0);
+  const cr = st.cr + (g.eclipse > 0 ? 0.2 : 0) + (m.critT > 0 ? m.cv("critup") : 0);
+  const shred = cat === "skill" || cat === "burst" ? m.cv("shred") : 0;
   const crit = Math.random() < cr;
-  return { src: m.id, pid: g.pid, atk: st.atk + buffAtk, mv, el, cat, cr, cd: st.cd, bonus, em: st.em, lvl: m.cs.lvl, rb: st.dmg.react || 0, icd: m.id + icd, icdT, crit, ...extra };
+  return { src: m.id, pid: g.pid, atk: st.atk + buffAtk, mv, el, cat, cr, cd: st.cd, bonus, em: st.em, lvl: m.cs.lvl, rb: st.dmg.react || 0, icd: m.id + icd, icdT, crit, ...(shred ? { shred } : {}), ...extra };
 }
 // authority side ----------------------------------------------------------
 export function applyHit(g: Game, e: Enemy, h: Hit, depth = 0) {
@@ -58,6 +61,7 @@ export function applyHit(g: Game, e: Enemy, h: Hit, depth = 0) {
       case "slow": e.slow = react.v; e.slowT = react.dur!; break;
     }
   }
+  if (h.shred) { e.resdown = Math.max(e.resT > 0 ? e.resdown : 0, h.shred); e.resT = Math.max(e.resT, 8); }
   g.damageEnemy(e, dmg, h.crit!, h.el, label, h.src);
   if (h.kb && !e.boss && e.alive) { const d = e.pos.clone().sub(g.posOfPid(h.pid)); d.y = 0; d.normalize(); e.pos.addScaledVector(d, h.kb); }
 }
@@ -91,18 +95,29 @@ export function normalAttack(g: Game, m: Member, step: number, charged: boolean)
   if (pole) { const tip = p.pos.clone().add(new THREE.Vector3(fx * r * 0.85, 0.9, fz * r * 0.85)); g.fxAt("hit-spark", tip, el, 0.7); g.fxAt("orb", p.pos.clone().add(new THREE.Vector3(fx * r * 0.5, 0.9, fz * r * 0.5)), el, 0.8, (fx * Math.cos(g.camYaw) - fz * Math.sin(g.camYaw)) < 0, { life: 0.12, loop: true }); }
   else g.fxAt("crescent", c.clone().setY(c.y + 0.2), el, m.def.weapon === "claymore" ? 1.3 : 1, step % 2 === 1);
   g.hitArc(p.pos, p.face, r, pole ? 0.6 : 1.2, makeHit(g, m, mv, el, cat, "na", 2.5, { kb: m.def.weapon === "claymore" ? 0.8 : 0.25 }));
+  naWave(g, m, charged);
   g.gainEnergy(0.4, m);
+}
+function naWave(g: Game, m: Member, charged: boolean) {
+  const v = m.cv("nawave"); if (!v || charged) return; m.naCount++; if (m.naCount % 4) return;
+  const p = g.player, dir = new THREE.Vector3(Math.sin(p.face), 0, Math.cos(p.face));
+  g.shootDir(m, p.pos.clone().add(new THREE.Vector3(0, 1, 0)), dir, 20, makeHit(g, m, v, m.def.el, "na", "nw", 0.5), { r: 1.6, pierce: true, scale: 1.6, life: 0.6 });
 }
 export function plunge(g: Game, m: Member) {
   const p = g.player; g.fxAt("sigil-burst", p.pos, m.infuse ? m.infuse.el : "phys", 0.7); g.shake(0.25);
   g.hitCircle(p.pos, 3, makeHit(g, m, 1.9 * m.mult(0), m.infuse ? m.infuse.el : m.def.weapon === "catalyst" ? m.def.el : "phys", "plunge", "pl", 1, { kb: 1.2 }));
 }
-export function castSkill(g: Game, m: Member, isBurst: boolean) {
-  const d: SkillDef = isBurst ? m.def.burst : m.def.skill, p = g.player, el = m.def.el;
-  const ti = isBurst ? 2 : 1, mv = d.mv * m.mult(ti), cat = isBurst ? "burst" : "skill", tag = isBurst ? "Q" : "E";
+export function castSkill(g: Game, m: Member, isBurst: boolean, scale = 1, echo = false) {
+  const base: SkillDef = isBurst ? m.def.burst : m.def.skill, p = g.player, el = m.def.el;
+  const more = m.cv(isBurst ? "qmore" : "emore"), d: SkillDef = { ...base };
+  if (more) { if (["volley", "chain", "meteor"].includes(d.kind)) d.n = (d.n || 1) + more; else if (["field", "turret", "vortex", "infuse", "buff"].includes(d.kind)) d.dur = (d.dur || 8) + more; else { d.r = (d.r || 3) * (1 + more * 0.1); d.mv = d.mv * (1 + more * 0.1); } }
+  const ti = isBurst ? 2 : 1, mv = d.mv * m.mult(ti) * scale, cat = isBurst ? "burst" : "skill", tag = isBurst ? (echo ? "Q2" : "Q") : "E";
+  if (!echo) consAfterCast(g, m, isBurst);
   const fx = Math.sin(p.face), fz = Math.cos(p.face), front = p.pos.clone().add(new THREE.Vector3(fx * 1.5, 0, fz * 1.5));
   const hit = (mvv = mv, icd = tag, icdT = 0.4, x: Partial<Hit> = {}) => makeHit(g, m, mvv, el, cat, icd, icdT, { strong: isBurst, ...x });
-  let gave = false; const particles = () => { if (!isBurst && !gave) { gave = true; g.later(0.5, () => g.gainEnergy(12, m, true)); } };
+  let gave = false; const particles = () => {
+    const hh = m.cv("healhit"); if (hh && m.healCd <= 0 && !isBurst) { m.healCd = 1; g.healActive(hh, m); }
+    if (!isBurst && !gave) { gave = true; g.later(0.5, () => g.gainEnergy(12, m, true)); } };
   const fieldHit = (c: THREE.Vector3, r: number, mvv: number) => { const n = g.hitCircle(c, r, hit(mvv, tag + "f", 0.9)); if (n) particles(); return n; };
   switch (d.kind) {
     case "wave": { faceToward(g, 10); const dir = new THREE.Vector3(Math.sin(p.face), 0, Math.cos(p.face)); g.shootDir(m, p.pos.clone().add(new THREE.Vector3(0, 1, 0)), dir, 20, hit(), { r: d.r || 1.6, pierce: true, scale: 1.8, life: 0.8 }, particles); break; }
@@ -189,6 +204,23 @@ export function castSkill(g: Game, m: Member, isBurst: boolean) {
     }
   }
   bus.emit("daily", "skill", isBurst ? 0 : 1);
+}
+function consAfterCast(g: Game, m: Member, isBurst: boolean) {
+  const p = g.player;
+  if (!isBurst) {
+    const en = m.cv("energy"); if (en) m.energy = Math.min(m.maxEnergy, m.energy + en);
+    if (m.cv("critup")) m.critT = 8;
+    const sv = m.cv("summon");
+    if (sv) {
+      const c = p.pos.clone().add(new THREE.Vector3(Math.sin(p.face + 1.6) * 1.6, 0, Math.cos(p.face + 1.6) * 1.6)); c.y = heightAt(c.x, c.z);
+      g.addField({ pos: c, r: 10, t: 8, tick: 0.4, every: 1.5, fxName: "mote", el: m.def.el, fxEvery: 0.6, fxScale: 1.6, onTick: (f) => { const e = nearestEnemy(g, f.pos, f.r); if (e) g.shoot(m, f.pos.clone().setY(f.pos.y + 1.2), e, 18, makeHit(g, m, sv, m.def.el, "skill", "sm", 1.5), { r: 0.6, scale: 0.7 }); } });
+    }
+  } else {
+    const rf = m.cv("qrefund"); if (rf) g.later(1, () => (m.energy = Math.min(m.maxEnergy, m.energy + rf)));
+    const pb = m.cv("partybuff"); if (pb) { g.partyDmgT = 12; g.partyDmgV = pb; bus.emit("toast", `チームの与えるダメージ+${Math.round(pb * 100)}%`); }
+    const sq = m.cv("shieldq"); if (sq) g.addShieldAbs(m.st.hp * sq, 12);
+    const ec = m.cv("echo"); if (ec) g.later(2, () => castSkill(g, m, true, ec, true));
+  }
 }
 // enemy AI (authority) --------------------------------------------------------
 export function updateEnemy(g: Game, e: Enemy, dt: number) {

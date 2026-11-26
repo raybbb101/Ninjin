@@ -9,6 +9,7 @@ import { HALF } from "../world/terrain";
 import { POIS } from "../world/worldgen";
 import { mapImage } from "./mapimg";
 import { skillIcon } from "./icons";
+import { MAILS } from "../data/mail";
 
 export class Hud {
   root = $("#hud"); joyBase: HTMLElement; joyKnob: HTMLElement; btn: Record<string, HTMLElement> = {}; party: HTMLElement; inter: HTMLElement; toastBox: HTMLElement; quest: HTMLElement; boss: HTMLElement; mini: HTMLCanvasElement; coopTag: HTMLElement;
@@ -26,7 +27,7 @@ export class Hud {
     this.mini.addEventListener("pointerdown", (e) => { e.stopPropagation(); openMenu("map"); });
     r.append(h("div", { class: "menu-btn", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu("main"); } }, "≡"));
     const tr = h("div", { class: "tr" });
-    for (const [k, label, icon] of [["gacha", "祈願", "✦"], ["quest", "任務", "!"], ["coop", "マルチ", "⇄"], ["chars", "キャラ", "☺"], ["bag", "バッグ", "▣"]]) tr.append(h("div", { class: "ic", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu(k); } }, h("b", {}, icon), h("small", {}, label)));
+    for (const [k, label, icon] of [["mail", "メール", "✉"], ["gacha", "祈願", "✦"], ["quest", "任務", "!"], ["coop", "マルチ", "⇄"], ["chars", "キャラ", "☺"], ["bag", "バッグ", "▣"]]) tr.append(h("div", { class: "ic", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu(k); } }, h("b", {}, icon), h("small", {}, label)));
     r.append(tr);
     this.quest = h("div", { class: "qtrack", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu("quest"); } }); r.append(this.quest);
     this.boss = h("div", { class: "bossbar" }); r.append(this.boss);
@@ -85,7 +86,9 @@ export class Hud {
     // skill buttons
     const e = this.btn.e, cd = m.cdE / (m.def.skill.cd * (1 - m.st.cdr));
     (e.querySelector(".cd") as HTMLElement).style.background = m.cdE > 0 ? `conic-gradient(rgba(0,0,0,.6) ${cd * 360}deg, transparent 0)` : "none";
-    (e.querySelector(".cdt") as HTMLElement).textContent = m.cdE > 0 ? m.cdE.toFixed(1) : "";
+    (e.querySelector(".cdt") as HTMLElement).textContent = m.charges > 0 && m.maxCharges > 1 ? `${m.charges}回` : m.charges <= 0 ? m.cdE.toFixed(1) : "";
+    (e.querySelector(".cd") as HTMLElement).style.opacity = m.charges > 0 ? "0.35" : "1";
+    const unread = MAILS.filter((x) => S.mail[x.id] !== 2).length; this.root.querySelector(".tr .ic")?.classList.toggle("badge", unread > 0);
     e.style.setProperty("--c", EL_INFO[m.def.el].color);
     if (this.iconFor !== m.id) { this.iconFor = m.id; const col = EL_INFO[m.def.el].color; (e.firstElementChild as HTMLElement).style.backgroundImage = `url(${skillIcon(m.def.skill.kind, col)})`; (this.btn.q.firstElementChild as HTMLElement).style.backgroundImage = `url(${skillIcon(m.def.burst.kind, col, true)})`; }
     const q = this.btn.q, en = m.energy / m.maxEnergy; q.style.setProperty("--c", EL_INFO[m.def.el].color);

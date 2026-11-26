@@ -40,7 +40,7 @@ export class Game {
   timers: { t: number; f: () => void }[] = []; nums: Num[] = []; tele: { mesh: THREE.Mesh; t: number; max: number }[] = [];
   camYaw = 0; camPitch = 0.42; camDist = 11; camT = new THREE.Vector3(); shakeT = 0;
   input: Input = { mx: 0, my: 0, sprint: false, atkHeld: false, atkTap: false, atkHold: false, eTap: false, eHold: false, qTap: false, jump: false, camDX: 0, camDY: 0, zoom: 0 };
-  now = 0; hour = 9; stats = { reacts: 0 }; eclipse = 0; buffAtk = 0; buffAtkVal = 0; shield = 0; shieldT = 0; switchCd = 0;
+  now = 0; hour = 9; stats = { reacts: 0 }; eclipse = 0; partyDmgT = 0; partyDmgV = 0; buffAtk = 0; buffAtkVal = 0; shield = 0; shieldT = 0; switchCd = 0;
   combo = 0; comboT = 0; atkT = 0; atkFrameT = 0; atkQueued = false; holdT = 0; charging = false; burstLock = 0;
   pid = 1; role: "solo" | "host" | "guest" = "solo"; net: any = null; remotes = new Map<number, RemotePlayer>(); netEcho = false;
   chestObjs = new Map<string, THREE.Object3D>(); shardObjs = new Map<string, THREE.Mesh>(); interactables: { id: string; label: string; act: () => void; d: number }[] = [];
@@ -208,9 +208,9 @@ export class Game {
     const d = enemyById(defId), fam = DROP_FAMILY[d.drop], tier = lvl >= 40 ? 2 : lvl >= 20 ? 1 : 0, rng = Math.random;
     addItem("coin", Math.round((40 + lvl * 6) * (d.boss ? 12 : 1)));
     addItem(fam[tier], d.boss ? 4 : rng() < 0.6 ? 1 : 2); if (tier > 0 && rng() < 0.5) addItem(fam[tier - 1], 1); if (rng() < 0.08 + (d.boss ? 1 : 0)) addItem(fam[Math.min(2, tier + 1)], 1);
-    addAR(d.boss ? 100 : 3); S.stats.kills++;
+    addAR(d.boss ? 100 : 3); S.stats.kills++; if (!d.boss && Math.random() < 0.06) addItem("gem", 5);
     if (d.boss && d.el) addItem("gem_" + d.el, 2 + Math.floor(lvl / 25));
-    if (d.boss) { for (let i = 0; i < 2; i++) rollRelic(new Rng(Date.now() + i), lvl >= 40 ? 5 : 4); addItem("gem", 20); bus.emit("toast", "遺紋を手に入れた！"); dailyEvent("boss", 1); }
+    if (d.boss) { for (let i = 0; i < 2; i++) rollRelic(new Rng(Date.now() + i), lvl >= 40 ? 5 : 4); addItem("gem", 40); addItem("exp3", 1); bus.emit("toast", "遺紋を手に入れた！"); dailyEvent("boss", 1); }
     if (d.body === "golem" || d.body === "wisp") dailyEvent("elite", 1);
     dailyEvent("kill", 1); this.gainEnergy(d.boss ? 10 : 2, null); markDirty();
     void pos;
@@ -283,11 +283,12 @@ export class Game {
   openChest(id: string, tier: number) {
     if (this.role === "guest") { bus.emit("toast", "マルチプレイ中は他の人の世界の宝箱は開けられません"); return; }
     S.opened[id] = 1; const o = this.chestObjs.get(id); if (o) { const lid = o.getObjectByName("lid"); if (lid) { lid.rotation.x = -1.2; lid.position.z -= 0.3; lid.position.y += 0.2; } this.later(1.2, () => { o.removeFromParent(); this.chestObjs.delete(id); }); }
-    const gems = [0, 2, 5, 10, 20][tier], coin = [0, 300, 1200, 3000, 6000][tier];
+    const gems = [0, 5, 12, 25, 50][tier], coin = [0, 1000, 3000, 8000, 15000][tier];
     addItem("gem", gems); addItem("coin", coin);
     const r = Math.random(), loot: string[] = [`星晶 ×${gems}`, `コイン ×${coin}`];
     const give = (k: string, n: number, nm: string) => { addItem(k, n); loot.push(`${nm} ×${n}`); };
-    if (tier >= 2) give(r < 0.5 ? "exp2" : "ore2", tier, r < 0.5 ? "冒険家の手記" : "精鉄"); else give("exp1", 2, "旅の手記");
+    if (tier >= 2) { give("exp2", tier + 1, "冒険家の手記"); give("ore2", tier, "精鉄"); } else { give("exp1", 3, "旅の手記"); give("ore1", 2, "鉄の欠片"); }
+    if (tier >= 4) give("ticket_s", 1, "銀の願い札");
     if (tier >= 3) { rollRelic(new Rng(Date.now()), tier >= 4 ? 5 : 4); loot.push("遺紋 ×1"); }
     if (Math.random() < 0.3) give("food1", 1, "おにぎり");
     addAR([0, 10, 20, 40, 80][tier]); dailyEvent("chest", 1); markDirty();
@@ -354,8 +355,8 @@ export class Game {
     this.active = i; this.switchCd = 1; this.player.setChar(this.cur.id); this.fxAt("hit-spark", this.player.pos.clone().setY(this.player.pos.y + 1), this.cur.def.el, 1.2); bus.emit("party");
   }
   tryE(hold: boolean) {
-    const m = this.cur; if (m.cdE > 0 || this.player.mode === "climb" || this.player.mode === "swim" || this.player.mode === "dash") return;
-    m.cdE = m.def.skill.cd * (1 - m.st.cdr) * (hold ? 1.3 : 1); this.atkT = 0.35; this.atkFrameT = 0.35;
+    const m = this.cur; if (m.charges <= 0 || this.player.mode === "climb" || this.player.mode === "swim" || this.player.mode === "dash") return;
+    m.charges--; if (m.cdE <= 0) m.cdE = m.eCdFull * (hold ? 1.3 : 1); this.atkT = 0.35; this.atkFrameT = 0.35;
     castSkill(this, m, false); bus.emit("sfx", "skill");
   }
   tryQ() {
@@ -381,7 +382,8 @@ export class Game {
     // timers
     this.switchCd -= dt; this.burstLock -= dt; this.eclipse = Math.max(0, this.eclipse - dt); this.buffAtk = Math.max(0, this.buffAtk - dt);
     if (this.shieldT > 0) { this.shieldT -= dt; if (this.shieldT <= 0) this.shield = 0; }
-    for (const x of this.members) { x.cdE = Math.max(0, x.cdE - dt); if (x.infuse) { x.infuse.t -= dt; if (x.infuse.t <= 0) x.infuse = null; } }
+    this.partyDmgT = Math.max(0, this.partyDmgT - dt);
+    for (const x of this.members) { x.critT = Math.max(0, x.critT - dt); x.healCd -= dt; if (x.charges > x.maxCharges) x.charges = x.maxCharges; if (x.cdE > 0) { x.cdE -= dt; if (x.cdE <= 0) { x.cdE = 0; x.charges = Math.min(x.maxCharges, x.charges + 1); if (x.charges < x.maxCharges) x.cdE = x.eCdFull; } } else if (x.charges < x.maxCharges) x.cdE = x.eCdFull; if (x.infuse) { x.infuse.t -= dt; if (x.infuse.t <= 0) x.infuse = null; } }
     for (let i = this.timers.length - 1; i >= 0; i--) { const t = this.timers[i]; t.t -= dt; if (t.t <= 0) { this.timers.splice(i, 1); t.f(); } }
     // actions
     if (!this.dialogOpen && !this.paused && !this.dead) {

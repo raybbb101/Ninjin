@@ -15,6 +15,7 @@ export interface Save {
   daily: { date: string; tasks: { type: string; text: string; n: number; goal: number }[]; claimed: boolean[]; bonus: boolean };
   gacha: { p5: Record<string, number>; p4: Record<string, number>; g: Record<string, boolean>; hist: { t: number; b: string; id: string; r: number }[] };
   pos: { x: number; y: number; z: number }; camps: Record<string, number>; bosses: Record<string, number>; tower: Record<string, number>;
+  mail: Record<string, number>;
   settings: { quality: "low" | "mid" | "high" | "auto"; fps: boolean; sfx: boolean; tilt: boolean; name: string };
   seq: number; stats: { kills: number; reacts: number; play: number };
 }
@@ -54,13 +55,13 @@ function fresh(): Save {
     quest: { main: 0, step: 0, done: false }, flags: {},
     daily: { date: "", tasks: [], claimed: [], bonus: false },
     gacha: { p5: { standard: 0, event: 0, weapon: 0 }, p4: { standard: 0, event: 0, weapon: 0 }, g: { event: false, weapon: false }, hist: [] },
-    pos: { x: 0, y: 0, z: 0 }, camps: {}, bosses: {}, tower: {},
+    pos: { x: 0, y: 0, z: 0 }, camps: {}, bosses: {}, tower: {}, mail: {},
     settings: { quality: "auto", fps: false, sfx: true, tilt: true, name: "旅人" },
     seq: 0, stats: { kills: 0, reacts: 0, play: 0 },
   };
 }
 export function loadSave(): boolean {
-  try { const raw = localStorage.getItem(KEY); if (raw) { S = Object.assign(fresh(), JSON.parse(raw)); return true; } } catch { }
+  try { const raw = localStorage.getItem(KEY); if (raw) { S = Object.assign(fresh(), JSON.parse(raw)); S.mail ||= {}; return true; } } catch { }
   S = fresh(); addChar("sora"); return false;
 }
 let dirty = false;

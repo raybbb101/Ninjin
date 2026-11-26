@@ -128,3 +128,9 @@ h3 { color: var(--gold); font-size: 15px; margin: 14px 0 6px; } .daily { display
 .b-e > span, .b-q > span { width: 100%; height: 100%; background: center / 70% no-repeat; display: block; }
 .b-q > span { border-radius: 50%; }
 @media (min-height: 520px) { .party { top: 22%; gap: 6px; } .pm .pp { width: 44px; height: 44px; } }
+
+.tr .ic.badge b { position: relative; } .tr .ic.badge b::after { content: ""; position: absolute; right: -2px; top: -2px; width: 10px; height: 10px; border-radius: 50%; background: #ff4a6a; border: 2px solid #fff; }
+.begsel { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 6px; margin-top: 8px; } .bs { position: relative; display: flex; flex-direction: column; align-items: center; padding: 4px; border-radius: 8px; background: rgba(0,0,0,.25); border: 2px solid transparent; font-size: 12px; } .bs.on { border-color: var(--gold); background: rgba(240,213,138,.25); } .bs canvas { width: 40px; height: 40px; image-rendering: pixelated; } .bs .info { margin-top: 2px; padding: 1px 8px; border-radius: 999px; background: rgba(255,255,255,.15); color: #fff !important; }
+.rrow { font-size: 13px; padding: 4px 8px; background: rgba(255,255,255,.05); border-radius: 6px; margin: 3px 0; }
+.mitem { background: rgba(255,255,255,.05); border-radius: 10px; padding: 10px; margin-bottom: 10px; } .mitem.got { opacity: .55; } .mh { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; } .mh b { color: var(--gold); } .mh small { color: var(--sub); } .mitem p { font-size: 13px; line-height: 1.6; }
+.cons div { font-size: 12px; margin-top: 2px; }

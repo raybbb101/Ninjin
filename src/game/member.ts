@@ -2,9 +2,10 @@ import { charById, type CharDef } from "../data/characters";
 import { S, type CharState } from "./state";
 import { statsOf, talentLevels, talentMult, type Stats } from "./stats";
 import type { El } from "../data/elements";
+import { consVal } from "../data/cons";
 
 export class Member {
-  def: CharDef; st!: Stats; hp = 1; energy = 0; cdE = 0; infuse: { el: El; t: number; bonus: number } | null = null; dead = false; tal = [1, 1, 1];
+  def: CharDef; st!: Stats; hp = 1; energy = 0; cdE = 0; infuse: { el: El; t: number; bonus: number } | null = null; dead = false; tal = [1, 1, 1]; charges = 1; critT = 0; naCount = 0; healCd = 0;
   constructor(public id: string, public party: string[]) { this.def = charById(id); this.refresh(true); }
   get cs(): CharState { return S.chars[this.id]; }
   refresh(full = false) {
@@ -12,6 +13,9 @@ export class Member {
     this.st = statsOf(this.id, this.party); this.tal = talentLevels(this.cs);
     this.hp = full ? this.st.hp : Math.max(this.dead ? 0 : 1, ratio * this.st.hp);
   }
+  cv(code: string) { return consVal(this.id, this.cs.cons, code); }
+  get maxCharges() { return 1 + this.cv("echarge"); }
+  get eCdFull() { return this.def.skill.cd * (1 - this.st.cdr) * (1 - this.cv("ecd")); }
   mult(i: number) { return talentMult(this.tal[i]); }
   get maxEnergy() { return this.def.burst.cost; }
 }

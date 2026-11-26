@@ -48,7 +48,6 @@ export function computeStats(c: CharState, w: WeaponInst | undefined, relics: (R
     cnt[r.set] = (cnt[r.set] || 0) + 1;
   }
   for (const s of SETS) { if ((cnt[s.id] || 0) >= 2) for (const k in s.b2) A(k, s.b2[k]); if ((cnt[s.id] || 0) >= 4) for (const k in s.b4) A(k, s.b4[k]); }
-  if (c.cons >= 2) A("cr", 0.1); if (c.cons >= 4) A("atkP", 0.2); if (c.cons >= 6) A("all", 0.3);
   let cdr = 0;
   for (const e of partyResonance(party)) {
     if (e === "fire") A("atkP", 0.25); if (e === "water") { A("hpP", 0.25); A("heal", 0.15); } if (e === "volt") A("er", 0.3);
