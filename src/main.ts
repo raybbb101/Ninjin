@@ -18,6 +18,7 @@ const boot = document.getElementById("boot")!, bar = boot.querySelector(".bar i"
 const step = (k: number, t: string) => { bar.style.width = k * 100 + "%"; msg.textContent = t; return new Promise((r) => setTimeout(r, 16)); };
 (window as any).EL_COL = Object.fromEntries(Object.entries(EL_INFO).map(([k, v]) => [k, v.color]));
 async function start() {
+  (window as any).NINJIN_BOOTED = true;
   await step(0.1, "セーブデータを読み込み中…");
   const had = loadSave(); ensureDaily();
   await step(0.3, "エフェクトを読み込み中…");
