@@ -27,7 +27,7 @@ export class Hud {
     this.mini.addEventListener("pointerdown", (e) => { e.stopPropagation(); openMenu("map"); });
     r.append(h("div", { class: "menu-btn", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu("main"); } }, "≡"));
     const tr = h("div", { class: "tr" });
-    for (const [k, label, icon] of [["gacha", "祈願", "✦"], ["quest", "任務", "!"], ["coop", "マルチ", "⇄"], ["chars", "キャラ", "☺"], ["bag", "バッグ", "▣"]]) tr.append(h("div", { class: "ic", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu(k); } }, h("b", {}, icon), h("small", {}, label)));
+    for (const [k, label, icon] of [["mail", "メール", "✉"], ["gacha", "祈願", "✦"], ["quest", "任務", "!"], ["coop", "マルチ", "⇄"], ["chars", "キャラ", "☺"], ["bag", "バッグ", "▣"]]) tr.append(h("div", { class: "ic", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu(k); } }, h("b", {}, icon), h("small", {}, label)));
     r.append(tr);
     this.quest = h("div", { class: "qtrack", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu("quest"); } }); r.append(this.quest);
     this.boss = h("div", { class: "bossbar" }); r.append(this.boss);

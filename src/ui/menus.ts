@@ -8,7 +8,7 @@ import { SLOTS, SLOT_NAME, STAT_NAME, FLAT, SETS, setById } from "../data/relics
 import { EL_INFO, REACTIONS, RESONANCE } from "../data/elements";
 import { statsOf, ASC_CAP, weaponAtk, weaponSub, relicMain, relicMaxLvl, partyResonance, setCounts, weaponMaxAsc } from "../game/stats";
 import * as P from "../game/progression";
-import { wish, currentBanner, BANNER_INFO, beg, BEGINNER_MAX, BEGINNER_POOL, type BannerId, type Pull } from "../game/gacha";
+import { wish, BANNER_INFO, beg, gsel, charsOfEl, ELS_WITH_5, FIVE_WEAPONS, SHOP, shopLeft, buy, BEGINNER_MAX, BEGINNER_POOL, type BannerId, type Pull } from "../game/gacha";
 import { consDesc } from "../data/cons";
 import { MAILS } from "../data/mail";
 import { CARDS } from "../data/cards";
@@ -26,7 +26,7 @@ import { enemyById } from "../data/enemies";
 const fmtStat = (k: string, v: number) => (FLAT.has(k) ? fmt(v) : pct(v));
 const itemName = (id: string) => itemById(id)?.name || id;
 export class Menus {
-  ui = $("#ui"); stack: string[] = []; cur: HTMLElement | null = null; selChar = ""; tab = "info"; bagTab = "weapon"; gTab: BannerId = "beginner"; onChange: (() => void) | null = null;
+  ui = $("#ui"); stack: string[] = []; cur: HTMLElement | null = null; selChar = ""; tab = "info"; bagTab = "weapon"; gTab: BannerId | "shop" = "beginner"; onChange: (() => void) | null = null;
   constructor(public g: Game) {
     bus.on("dialog", (lines: [string, string][], done: () => void) => this.dialog(lines, done));
     bus.on("npc", (id: string) => this.npc(id));
@@ -58,7 +58,7 @@ export class Menus {
   main() {
     const g = h("div", { class: "grid" });
     const add = (k: string, ic: string, label: string) => g.append(h("div", { class: "gi", onclick: () => this.open(k) }, h("b", {}, ic), h("span", {}, label)));
-    add("chars", "☺", "キャラクター"); add("party", "◎", "編成"); add("gacha", "✦", "祈願"); add("bag", "▣", "バッグ"); add("quest", "!", "任務・依頼"); add("map", "◈", "マップ"); add("coop", "⇄", "マルチプレイ"); add("school", "❂", "元素の学び舎"); add("event", "✺", "星海の螺旋"); add("settings", "⚙", "設定");
+    add("chars", "☺", "キャラクター"); add("party", "◎", "編成"); add("gacha", "✦", "祈願"); add("bag", "▣", "バッグ"); add("quest", "!", "任務・依頼"); add("map", "◈", "マップ"); add("coop", "⇄", "マルチプレイ"); add("mail", "✉", "メール"); add("school", "❂", "元素の学び舎"); add("event", "✺", "星海の螺旋"); add("settings", "⚙", "設定");
     const need = P.arExpNeed(S.ar);
     this.panel("メニュー", h("div", {}, h("div", { class: "arbox" }, h("div", {}, `冒険ランク ${S.ar}　世界ランク ${P.worldLevel()}`), h("div", { class: "bar" }, h("i", { style: `width:${(S.arExp / need) * 100}%` })), h("small", {}, `${fmt(S.arExp)} / ${fmt(need)}　・　プレイ時間 ${Math.floor(S.stats.play / 3600)}時間${Math.floor((S.stats.play % 3600) / 60)}分`)), g));
   }
@@ -186,27 +186,44 @@ export class Menus {
   gacha() {
     const body = h("div", { class: "gacha" }); this.panel("祈願", body, "wide");
     const render = () => {
-      clear(body); const bn = currentBanner();
-      const B = beg(); if (this.gTab === "beginner" && B.done) this.gTab = "event";
-      const tabs = h("div", { class: "tabs" }); for (const b of [...(B.done ? [] : ["beginner"]), "event", "weapon", "standard"] as BannerId[]) tabs.append(h("div", { class: "tab" + (this.gTab === b ? " on" : ""), onclick: () => { this.gTab = b; render(); } }, BANNER_INFO[b].name));
+      clear(body); const B = beg(), sel = gsel(); if (this.gTab === "beginner" && B.done) this.gTab = "char";
+      const tabs = h("div", { class: "tabs" });
+      for (const [b, nm] of [...(B.done ? [] : [["beginner", "はじめての願い"]]), ["char", "キャラ祈願"], ["weapon", "武器祈願"], ["shop", "交換所"]] as [string, string][]) tabs.append(h("div", { class: "tab" + (this.gTab === b ? " on" : ""), onclick: () => { this.gTab = b as any; render(); } }, nm));
+      body.append(tabs);
+      if ((this.gTab as string) === "shop") { body.append(this.exchange(render)); return; }
       const info = BANNER_INFO[this.gTab], tk = info.ticket;
       let feat: HTMLElement;
       if (this.gTab === "beginner") {
-        const sel = B.sel ? charById(B.sel) : null, grid = h("div", { class: "begsel" });
+        const cur = B.sel ? charById(B.sel) : null, grid = h("div", { class: "begsel" });
         for (const id of BEGINNER_POOL()) { const d = charById(id); grid.append(h("div", { class: "bs" + (B.sel === id ? " on" : ""), style: `--c:${EL_INFO[d.el].color}`, onclick: () => { B.sel = id; markDirty(); render(); } }, portrait(d.look, d.weapon, 2, d.id), h("span", {}, d.name), h("small", { class: "info", onclick: (e: Event) => { e.stopPropagation(); this.charInfo(id, () => this.gacha()); } }, "詳細"))); }
-        feat = h("div", { class: "feat", style: `--c:${sel ? EL_INFO[sel.el].color : "#9ab8ff"}` }, h("div", { style: "flex:1" }, h("div", { class: "fname" }, sel ? `選択中：${sel.name}` : "もらいたい★5キャラを選んでね"), h("small", {}, `残り ${BEGINNER_MAX - B.n} 回　（${BEGINNER_MAX}回以内に必ず手に入る）`), grid));
-      } else if (this.gTab === "event") { const d = charById(bn.featured); const art = fullBody(d.look, d.weapon, 5, d.id); feat = h("div", { class: "feat", style: `--c:${EL_INFO[d.el].color}` }, art, h("div", {}, h("div", { class: "fname" }, d.name), h("div", {}, d.title), h("div", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("small", {}, "★4 確率アップ：" + bn.f4.map((x) => charById(x).name).join("・")), h("small", {}, `残り ${Math.ceil(bn.endsIn)} 日`))); }
-      else if (this.gTab === "weapon") feat = h("div", { class: "feat", style: "--c:#ffd84a" }, h("div", {}, h("div", { class: "fname" }, bn.sigs.map((x) => weaponById(x).name).join(" / ")), h("small", {}, "持ち武器の登場確率アップ！"), h("small", {}, "★4 確率アップ：" + bn.fw4.map((x) => weaponById(x).name).join("・"))));
-      else feat = h("div", { class: "feat", style: "--c:#9ab8ff" }, h("div", {}, h("div", { class: "fname" }, "星降る願い"), h("small", {}, "★5：" + CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter).map((c) => c.name).join("・") + "・常設★5武器")));
+        feat = h("div", { class: "feat", style: `--c:${cur ? EL_INFO[cur.el].color : "#9ab8ff"}` }, h("div", { style: "flex:1" }, h("div", { class: "fname" }, cur ? `選択中：${cur.name}` : "もらいたい★5キャラを選んでね"), h("small", {}, `残り ${BEGINNER_MAX - B.n} 回　（${BEGINNER_MAX}回以内に必ず手に入る）`), grid));
+      } else if (this.gTab === "char") {
+        const elRow = h("div", { class: "elrow" });
+        for (const e of ELS_WITH_5()) elRow.append(h("div", { class: "elchip" + (sel.el === e ? " on" : ""), style: `--c:${EL_INFO[e].color}`, onclick: () => { sel.el = e; markDirty(); render(); } }, EL_INFO[e].name));
+        const tgt = charById(sel.target[sel.el]!), picks = h("div", { class: "begsel" });
+        for (const c of charsOfEl(sel.el, 5)) picks.append(h("div", { class: "bs" + (c.id === tgt.id ? " on" : ""), style: `--c:${EL_INFO[c.el].color}`, onclick: () => { sel.target[sel.el] = c.id; markDirty(); render(); } }, portrait(c.look, c.weapon, 2, c.id), h("span", {}, c.name), h("small", { class: "info", onclick: (ev: Event) => { ev.stopPropagation(); this.charInfo(c.id, () => this.gacha()); } }, "詳細")));
+        const art = fullBody(tgt.look, tgt.weapon, 4, tgt.id);
+        feat = h("div", { class: "feat", style: `--c:${EL_INFO[sel.el].color}` }, art, h("div", { style: "flex:1" }, elRow, h("div", { class: "fname" }, `指定：${tgt.name}`), h("small", {}, `${EL_INFO[sel.el].name}元素の★4：${charsOfEl(sel.el, 4).map((c) => c.name).join("・") || "なし"}`), h("small", {}, S.gacha.g.char ? "次の★5は必ず指定キャラ！" : "★5が出たら50%で指定キャラ（すり抜けたら次は確定）"), picks));
+      } else {
+        const tw = weaponById(sel.weapon), list = h("div", { class: "wpick" });
+        for (const w of FIVE_WEAPONS()) { const ic = weaponIcon(w.type, RCOL[5], 1); list.append(h("div", { class: "wp" + (w.id === sel.weapon ? " on" : ""), onclick: () => { sel.weapon = w.id; sel.fate = sel.fate; markDirty(); render(); } }, ic, h("span", {}, w.name))); }
+        feat = h("div", { class: "feat", style: "--c:#ffd84a" }, h("div", { style: "flex:1;min-width:0" }, h("div", { class: "fname" }, `指定：${tw.name}`), h("small", {}, `${WEAPON_TYPE_NAME[tw.type]}　${tw.pDesc || ""}${tw.sig ? `（${charById(tw.sig).name}の持ち武器）` : ""}`), h("small", {}, `すり抜けポイント ${sel.fate} / 2　${sel.fate >= 2 ? "→ 次の★5は必ず指定武器！" : ""}`), list));
+      }
       const pity = S.gacha.p5[this.gTab] || 0, hard = this.gTab === "weapon" ? 80 : this.gTab === "beginner" ? BEGINNER_MAX : 90;
-      body.append(tabs, feat, h("p", { class: "gdesc" }, info.desc, h("br"), `★5まであと最大 ${hard - pity} 回${this.gTab !== "standard" && S.gacha.g[this.gTab] ? "（次の★5は確定でピックアップ！）" : ""}`),
-        h("div", { class: "gbtns" }, h("div", { class: "have" }, `${itemName(tk)} ${has(tk)}　星晶 ${fmt(has("gem"))}　星屑 ${has("dust")}`), h("button", { onclick: () => this.doWish(1) }, "1回祈願"), h("button", { class: "primary", onclick: () => this.doWish(10) }, "10回祈願")),
-        h("div", { class: "btns" }, h("button", { class: "sub", onclick: () => this.gHist() }, "履歴"), h("button", { class: "sub", onclick: () => this.gDetail(this.gTab) }, "詳細・確率")));
+      body.append(feat, h("p", { class: "gdesc" }, info.desc, h("br"), `★5まであと最大 ${hard - pity} 回（天井）`),
+        h("div", { class: "gbtns" }, h("div", { class: "have" }, `${itemName(tk)} ${has(tk)}　星晶 ${fmt(has("gem"))}　星屑 ${has("dust")}　星砂 ${has("sand")}`), h("button", { onclick: () => this.doWish(1) }, "1回祈願"), h("button", { class: "primary", onclick: () => this.doWish(10) }, "10回祈願")),
+        h("div", { class: "btns" }, h("button", { class: "sub", onclick: () => this.gHist() }, "履歴"), h("button", { class: "sub", onclick: () => this.gDetail(this.gTab as BannerId) }, "詳細・確率")));
     };
     this.onChange = render; render();
   }
+  exchange(re: () => void) {
+    const box = h("div", { class: "shop" });
+    box.append(h("p", { class: "gdesc" }, "星屑：★4・★5のダブりや★4以上の武器で手に入る。　星砂：★3武器を引くと15個手に入る。"), h("div", { class: "have" }, `星屑 ${has("dust")}　星砂 ${has("sand")}`));
+    for (const it of SHOP) { const left = shopLeft(it); box.append(h("div", { class: "it" }, h("b", { style: `color:${itemById(it.give).color}` }, itemById(it.give).icon), h("span", {}, itemById(it.give).name), h("small", {}, `${itemName(it.cost)} ${it.price}個　${it.limit ? `今月あと${left}回` : it.note}`), h("button", { disabled: left <= 0 || has(it.cost) < it.price, onclick: () => { if (buy(it)) bus.emit("toast", `${itemById(it.give).name}と交換した`); re(); } }, "交換"))); }
+    return box;
+  }
   doWish(n: number) {
-    const r = wish(this.gTab, n); if (typeof r === "string") { bus.emit("toast", r); return; }
+    const r = wish(this.gTab as BannerId, n); if (typeof r === "string") { bus.emit("toast", r); return; }
     this.wishAnim(r);
   }
   wishAnim(res: Pull[]) {
@@ -228,24 +245,24 @@ export class Menus {
     for (const r of res.sort((a, b) => b.rarity - a.rarity)) {
       const isC = r.kind === "char", nm = isC ? charById(r.id).name : weaponById(r.id).name;
       const art = isC ? portrait(charById(r.id).look, charById(r.id).weapon, 3, r.id) : weaponIcon(weaponById(r.id).type, RCOL[r.rarity], 3);
-      g.append(h("div", { class: "wr r" + r.rarity, style: `--r:${RCOL[r.rarity]}` }, art, h("div", {}, nm), h("small", {}, stars(r.rarity)), r.isNew ? h("b", { class: "new" }, "NEW") : null, r.cons && r.cons > 0 ? h("small", {}, `覚醒${r.cons}`) : null, r.dust ? h("small", {}, `星屑+${r.dust}`) : null));
+      g.append(h("div", { class: "wr r" + r.rarity, style: `--r:${RCOL[r.rarity]}` }, art, h("div", {}, nm), h("small", {}, stars(r.rarity)), r.isNew ? h("b", { class: "new" }, "NEW") : null, r.cons && r.cons > 0 ? h("small", {}, `覚醒${r.cons}`) : null, r.dust ? h("small", {}, `星屑+${r.dust}`) : null, r.sand ? h("small", {}, `星砂+${r.sand}`) : null, r.lost ? h("small", { class: "new" }, "すり抜け") : null));
     }
     this.panel("祈願結果", h("div", {}, g, h("button", { class: "primary", onclick: () => this.gacha() }, "OK")), "wide");
   }
   gDetail(b: BannerId) {
-    const bn = currentBanner(), body = h("div", { class: "gdetail" });
-    const rate = b === "weapon" ? ["★5：0.7%（63回目から上がり、80回目で必ず出る）", "★4：6.0%（10回ごとに必ず1つ）", "★5のうち75%がピックアップ武器。外れたら次の★5はピックアップ確定"] : b === "beginner" ? ["★5：0.6%（30回目から上がり、50回目で必ず出る）", "★5は必ず自分で選んだキャラクター", "★4：5.1%（10回ごとに必ず1つ）"] : b === "event" ? ["★5：0.6%（74回目から上がり、90回目で必ず出る）", "★5のうち50%がピックアップキャラ。外れたら次の★5はピックアップ確定", "★4：5.1%（10回ごとに必ず1つ、50%でピックアップ★4キャラ）"] : ["★5：0.6%（74回目から上がり、90回目で必ず出る）", "★5キャラと★5武器が半分ずつ", "★4：5.1%（10回ごとに必ず1つ）"];
-    body.append(h("h3", {}, "確率"), ...rate.map((r) => h("div", { class: "rrow" }, r)), h("div", { class: "rrow" }, "★3：残り（★3武器）"), h("div", { class: "rrow" }, `いまの★5天井カウント：${S.gacha.p5[b] || 0}回`));
-    const chars = b === "event" ? [bn.featured, ...bn.f4] : b === "beginner" ? BEGINNER_POOL() : b === "standard" ? CHARS.filter((c) => c.rarity === 5 && !c.limited && !c.starter).map((c) => c.id) : [];
+    const sel = gsel(), body = h("div", { class: "gdetail" });
+    const rate = b === "weapon" ? ["★5：0.7%（63回目から上がり、80回目で必ず出る）", "★5のうち50%で指定武器。すり抜けるとすり抜けポイント+1、ポイント2の次の★5は必ず指定武器（最大2回まですり抜け）", "★4：6.0%（10回ごとに必ず1つ、★4武器）", "★3：残り（★3武器）"] : b === "beginner" ? ["★5：0.6%（30回目から上がり、50回目で必ず出る）", "★5は必ず自分で選んだキャラクター", "★4：5.1%（10回ごとに必ず1つ）", "★3：残り（★3武器）"] : ["★5：0.6%（74回目から上がり、90回目で必ず出る）", "★5のうち50%で指定キャラ。すり抜けたら次の★5は必ず指定キャラ", "★4：5.1%（10回ごとに必ず1つ。50%でその元素の★4キャラ）", "★3：残り（★3武器）", "キャラ祈願ではキャラクターと★3武器だけが出る（★4・★5武器は出ない）"];
+    body.append(h("h3", {}, "確率"), ...rate.map((r) => h("div", { class: "rrow" }, r)), h("div", { class: "rrow" }, `いまの★5天井カウント：${S.gacha.p5[b] || 0}回`), h("div", { class: "rrow" }, "★5キャラはすべて恒常（いつでも引ける）です"));
+    const chars = b === "beginner" ? BEGINNER_POOL() : b === "char" ? [...charsOfEl(sel.el, 5), ...charsOfEl(sel.el, 4)].map((c) => c.id) : [];
     if (chars.length) { body.append(h("h3", {}, "登場するキャラクター（タップで詳細）")); const g = h("div", { class: "plist" }); for (const id of chars) { const d = charById(id); g.append(h("div", { class: "ci", style: `--r:${RCOL[d.rarity]}`, onclick: () => this.charInfo(id, () => this.gDetail(b)) }, portrait(d.look, d.weapon, 2, d.id), h("span", {}, d.name), h("i", { style: `background:${EL_INFO[d.el].color}` }))); } body.append(g); }
-    if (b === "weapon" || b === "standard") { body.append(h("h3", {}, "★5武器")); const ws = b === "weapon" ? bn.sigs : WEAPONS.filter((w) => w.rarity === 5 && w.standard).map((w) => w.id); for (const id of ws) body.append(this.weaponCard({ id, lvl: 90, asc: 6, ref: 1 })); }
+    if (b === "weapon") { body.append(h("h3", {}, "★5武器")); for (const w of FIVE_WEAPONS()) body.append(this.weaponCard({ id: w.id, lvl: 90, asc: 6, ref: 1 })); }
     body.append(h("button", { onclick: () => this.gacha() }, "もどる"));
     this.panel(BANNER_INFO[b].name + "：詳細", body, "wide");
   }
   charInfo(id: string, back?: () => void) {
     const d = charById(id), b90 = charBase(d, 90, 6), body = h("div", { class: "cinfo" });
     const art = fullBody(d.look, d.weapon, 4, d.id); art.className = "fullart";
-    body.append(h("div", { class: "chead" }, art, h("div", {}, h("div", { class: "cname" }, d.name, h("small", { style: `color:${RCOL[d.rarity]}` }, " " + stars(d.rarity))), h("div", { class: "ctitle" }, d.title), h("div", { class: "ctags" }, h("span", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("span", {}, WEAPON_TYPE_NAME[d.weapon]), d.limited ? h("span", {}, "期間限定") : null), h("p", { class: "bio" }, d.bio))));
+    body.append(h("div", { class: "chead" }, art, h("div", {}, h("div", { class: "cname" }, d.name, h("small", { style: `color:${RCOL[d.rarity]}` }, " " + stars(d.rarity))), h("div", { class: "ctitle" }, d.title), h("div", { class: "ctags" }, h("span", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("span", {}, WEAPON_TYPE_NAME[d.weapon]), null), h("p", { class: "bio" }, d.bio))));
     body.append(h("h3", {}, "Lv.90のステータス（武器・遺紋なし）"), h("div", { class: "ctab" }, ...[["HP", fmt(b90.hp)], ["攻撃力", fmt(b90.atk)], ["防御力", fmt(b90.def)], ["突破ボーナス", `${STAT_NAME[d.asc.k] || d.asc.k} +${FLAT.has(d.asc.k) ? d.asc.v : pct(d.asc.v)}`]].map(([k, v]) => h("div", { class: "row" }, h("span", {}, k), h("b", {}, v)))));
     body.append(h("h3", {}, `タイプ：${ROLE_NAME[d.role]}`), ...d.passives.map((p) => h("div", { class: "tal" }, h("div", { class: "tn" }, `固有天賦「${p.name}」`), h("small", {}, p.desc))));
     body.append(h("h3", {}, "天賦"), h("div", { class: "tal" }, h("div", { class: "tn" }, "通常攻撃"), h("small", {}, WEAPON_TYPE_NAME[d.weapon] + "の連続攻撃。長押しで重撃、空中で落下攻撃。")), h("div", { class: "tal" }, h("div", { class: "tn" }, `元素スキル「${d.skill.name}」`), h("small", {}, `${d.skill.desc}（クールタイム${d.skill.cd}秒）`)), h("div", { class: "tal" }, h("div", { class: "tn" }, `元素爆発「${d.burst.name}」`), h("small", {}, `${d.burst.desc}（元素エネルギー${d.burst.cost}）`)));
@@ -266,7 +283,7 @@ export class Menus {
     };
     this.onChange = render; render();
   }
-  gHist() { const l = h("div", { class: "hist" }); for (const x of S.gacha.hist.slice(0, 80)) { const nm = charById(x.id)?.name || weaponById(x.id)?.name; l.append(h("div", { style: `color:${RCOL[x.r]}` }, `${new Date(x.t).toLocaleString("ja-JP")}　${BANNER_INFO[x.b as BannerId].name}　${nm} ${stars(x.r)}`)); } this.panel("祈願履歴", h("div", {}, l, h("button", { onclick: () => this.gacha() }, "もどる"))); }
+  gHist() { const l = h("div", { class: "hist" }); for (const x of S.gacha.hist.slice(0, 80)) { const nm = charById(x.id)?.name || weaponById(x.id)?.name; l.append(h("div", { style: `color:${RCOL[x.r]}` }, `${new Date(x.t).toLocaleString("ja-JP")}　${(BANNER_INFO as any)[x.b]?.name || "以前の祈願"}　${nm} ${stars(x.r)}`)); } this.panel("祈願履歴", h("div", {}, l, h("button", { onclick: () => this.gacha() }, "もどる"))); }
   // ---------------- bag ----------------
   bag() {
     const body = h("div", {}); this.panel("バッグ", body, "wide");
@@ -396,7 +413,7 @@ export class Menus {
   }
   shop() {
     const body = h("div", { class: "shop" }); this.panel("商人ミツのお店", body, "wide");
-    const goods: [string, number, string, number][] = [["food1", 1, "coin", 500], ["food2", 1, "coin", 1500], ["food3", 1, "coin", 3000], ["exp1", 1, "coin", 600], ["exp2", 1, "coin", 2800], ["ore1", 1, "coin", 300], ["ore2", 1, "coin", 1400], ["ticket_s", 1, "dust", 5], ["ticket_g", 1, "dust", 5], ["book_a1", 1, "coin", 1200], ["book_b1", 1, "coin", 1200], ["book_c1", 1, "coin", 1200]];
+    const goods: [string, number, string, number][] = [["food1", 1, "coin", 500], ["food2", 1, "coin", 1500], ["food3", 1, "coin", 3000], ["exp1", 1, "coin", 600], ["exp2", 1, "coin", 2800], ["ore1", 1, "coin", 300], ["ore2", 1, "coin", 1400], ["book_a1", 1, "coin", 1200], ["book_b1", 1, "coin", 1200], ["book_c1", 1, "coin", 1200]];
     const render = () => { clear(body); body.append(h("div", { class: "have" }, `コイン ${fmt(has("coin"))}　星屑 ${has("dust")}`)); for (const [id, n, cur, price] of goods) body.append(h("div", { class: "it" }, h("b", { style: `color:${itemById(id).color}` }, itemById(id).icon), h("span", {}, itemById(id).name), h("small", {}, `${itemName(cur)} ${fmt(price)}`), h("button", { disabled: has(cur) < price, onclick: () => { if (useItem(cur, price)) addItem(id, n); render(); } }, "買う"))); };
     this.onChange = render; render();
   }
