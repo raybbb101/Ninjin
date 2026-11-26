@@ -23,7 +23,7 @@
     <div id="boot"><div class="logo">NINJIN</div><div class="bar"><i></i></div><div class="msg">読み込み中…</div></div>
   </div>
   
-  <script>setTimeout(function(){ if (!window.NINJIN_BOOTED) { var m = document.querySelector("#boot .msg"); if (m) m.innerHTML = "読み込めませんでした。<br>GitHub の Settings → Pages → Source を<br>「GitHub Actions」にしてから、もう一度開いてね。"; } }, 8000);</script>
-  <script>if (document.querySelector('script[src$="main.ts"]') && !/^(localhost|127\.|192\.168\.)/.test(location.hostname)) location.replace("./dist/" + location.search);</script>
+  <script>setTimeout(function(){ if (!window.NINJIN_BOOTED) { if (location.pathname.indexOf("/dist/") < 0) { location.replace("./dist/?r=" + Date.now()); return; } var m = document.querySelector("#boot .msg"); if (m) m.innerHTML = "読み込めませんでした。<br>ページを再読み込みしてみてね。"; } }, 8000);</script>
+  <script>if (document.querySelector('script[src$="main.ts"]') && !/^(localhost|127\.|192\.168\.)/.test(location.hostname)) location.replace("./dist/?r=" + Date.now());</script>
 </body>
 </html>
