@@ -5,7 +5,7 @@ export const SLOT_NAME: Record<Slot, string> = { ring: "指輪", earring: "耳�
 export const STAT_NAME: Record<string, string> = {
   hp: "HP", atk: "攻撃力", def: "防御力", hpP: "HP%", atkP: "攻撃力%", defP: "防御力%", em: "元素熟知", er: "元素チャージ効率", cr: "会心率", cd: "会心ダメージ", heal: "回復効果",
   fire: "焔元素ダメージ", water: "潮元素ダメージ", volt: "雷元素ダメージ", frost: "霜元素ダメージ", star: "星元素ダメージ", shadow: "影元素ダメージ", phys: "物理ダメージ",
-  na: "通常攻撃ダメージ", ca: "重撃ダメージ", skill: "元素スキルダメージ", burst: "元素爆発ダメージ", all: "与えるダメージ", el: "元素ダメージ",
+  na: "通常攻撃ダメージ", ca: "重撃ダメージ", plunge: "落下攻撃ダメージ", summon: "召喚ダメージ", caCr: "重撃会心率", skill: "元素スキルダメージ", burst: "元素爆発ダメージ", all: "与えるダメージ", el: "元素ダメージ",
 };
 export const FLAT = new Set(["hp", "atk", "def", "em"]);
 export const MAIN_POOL: Record<Slot, string[]> = {
@@ -25,6 +25,9 @@ export const SETS: SetDef[] = [
   { id: "comet", name: "彗星の残り火", el: "star", b2: { star: 0.15 }, b4: { burst: 0.2, er: 0.15 }, d2: "星元素ダメージ+15%", d4: "元素爆発ダメージ+20%、元素チャージ効率+15%" },
   { id: "nocturne", name: "夜想曲の仮面", el: "shadow", b2: { shadow: 0.15 }, b4: { all: 0.15, cd: 0.2 }, d2: "影元素ダメージ+15%", d4: "与えるダメージ+15%、会心ダメージ+20%" },
   { id: "blade", name: "剣客の心得", b2: { atkP: 0.18 }, b4: { na: 0.35, ca: 0.2 }, d2: "攻撃力+18%", d4: "通常攻撃ダメージ+35%、重撃ダメージ+20%" },
+  { id: "wing", name: "天翔ける翼", b2: { plunge: 0.25 }, b4: { plunge: 0.4, cr: 0.1 }, d2: "落下攻撃ダメージ+25%", d4: "落下攻撃ダメージ+40%、会心率+10%" },
+  { id: "sniper", name: "狙撃手の眼", b2: { ca: 0.2 }, b4: { ca: 0.3, caCr: 0.15 }, d2: "重撃ダメージ+20%", d4: "重撃ダメージ+30%、重撃会心率+15%" },
+  { id: "spirit", name: "精霊の友", b2: { summon: 0.2 }, b4: { summon: 0.35, er: 0.1 }, d2: "召喚したものの与えるダメージ+20%", d4: "召喚ダメージ+35%、元素チャージ効率+10%" },
   { id: "pilgrim", name: "巡礼者の祈り", b2: { hpP: 0.2 }, b4: { heal: 0.2, er: 0.15 }, d2: "HP+20%", d4: "回復効果+20%、元素チャージ効率+15%" },
 ];
 export const setById = (id: string) => SETS.find((s) => s.id === id)!;

@@ -20,6 +20,7 @@ export class PlayerActor {
   pos = new THREE.Vector3(); vel = new THREE.Vector3(); face = 0; mode: Mode = "ground"; stamina = 240; stamMax = 240; stamRegenDelay = 0;
   bb: Billboard; charId = ""; animT = 0; anim: keyof typeof FR = "idle"; atkFrame = -1; hurtT = 0; climbN = new THREE.Vector3(); sprintT = 0; dashT = 0; dashDir = new THREE.Vector3();
   ground: GroundFn = heightAt; arenaR = 0; arenaC = new THREE.Vector3(); fallStartY = 0; landDamage = 0; invuln = 0; climbLeap = 0; lastGroundY = 0; moving = false;
+  stamMul = { sprint: 1, climb: 1, glide: 1, swim: 1 }; spdMul = 1; jumpMul = 1;
   constructor(public scene: THREE.Scene, charId: string) { this.bb = new Billboard(buildAtlas(charId, charById(charId).look, charById(charId).weapon), FW, FH); scene.add(this.bb.root); scene.add(this.bb.shadow); this.setChar(charId); }
   setChar(id: string) {
     if (id === this.charId) return; this.charId = id; const d = charById(id);
@@ -46,7 +47,8 @@ export class PlayerActor {
     if (this.mode === "ground") {
       if (this.waterDeep(p.x, p.z) && p.y < SEA - 0.9) { this.mode = "swim"; return; }
       let speed = locked ? 0 : mag > 0.6 ? 6 : 3.4 * (mag / 0.6);
-      if (sprint && mag > 0.1 && !locked) { if (this.stamina > 0) { speed = 9; this.stamina -= 16 * dt; this.stamRegenDelay = 0.6; } }
+      if (sprint && mag > 0.1 && !locked) { if (this.stamina > 0) { speed = 9; this.stamina -= 16 * dt * this.stamMul.sprint; this.stamRegenDelay = 0.6; } }
+      speed *= this.spdMul;
       const nx = mx / (mag || 1), nz = mz / (mag || 1);
       if (mag > 0.05 && !locked) this.face = Math.atan2(nx, nz);
       const tx = p.x + nx * speed * dt * (mag > 0.05 ? 1 : 0), tz = p.z + nz * speed * dt * (mag > 0.05 ? 1 : 0);
@@ -67,7 +69,7 @@ export class PlayerActor {
       if (this.mode === "glide") {
         v.y = Math.max(v.y - 20 * dt, -2.4); const sp = 7.5;
         if (mag > 0.05) { this.face = Math.atan2(mx, mz); v.x += (mx * sp - v.x) * Math.min(1, dt * 3); v.z += (mz * sp - v.z) * Math.min(1, dt * 3); } else { v.x *= 1 - dt * 0.8; v.z *= 1 - dt * 0.8; }
-        this.stamina -= 9 * dt; this.stamRegenDelay = 1; if (this.stamina <= 0) { this.stamina = 0; this.mode = "air"; }
+        this.stamina -= 9 * dt * this.stamMul.glide; this.stamRegenDelay = 1; if (this.stamina <= 0) { this.stamina = 0; this.mode = "air"; }
         this.anim = "glide";
       } else if (this.mode === "plunge") { v.x = 0; v.z = 0; v.y = -32; this.anim = "atk"; }
       else { v.y -= 24 * dt; if (mag > 0.05 && !locked) { this.face = Math.atan2(mx, mz); v.x += (mx * 6 - v.x) * Math.min(1, dt * 2); v.z += (mz * 6 - v.z) * Math.min(1, dt * 2); } this.anim = v.y > 0 ? "jump" : "jump"; }
@@ -93,7 +95,7 @@ export class PlayerActor {
       const up = (mx * ux + mz * uz), side = (mx * -uz + mz * ux);
       let sp = 2.8; if (this.climbLeap > 0) { this.climbLeap -= dt; sp = 9; }
       const move = Math.abs(up) + Math.abs(side) > 0.1 || this.climbLeap > 0;
-      if (move) { this.stamina -= (this.climbLeap > 0 ? 0 : 10) * dt; this.stamRegenDelay = 1; }
+      if (move) { this.stamina -= (this.climbLeap > 0 ? 0 : 10) * dt * this.stamMul.climb; this.stamRegenDelay = 1; }
       const upv = this.climbLeap > 0 ? 1 : up;
       p.x += (ux * upv * Math.max(0.25, n[1]) + -uz * side) * sp * dt; p.z += (uz * upv * Math.max(0.25, n[1]) + ux * side) * sp * dt;
       p.y = this.groundAt(p.x, p.z);
@@ -105,8 +107,8 @@ export class PlayerActor {
       return;
     }
     if (this.mode === "swim") {
-      let sp = 3.2 * mag; if (sprint && mag > 0.1) { sp = 5.6; this.stamina -= 20 * dt; }
-      this.stamina -= 4 * dt; this.stamRegenDelay = 1;
+      let sp = 3.2 * mag; if (sprint && mag > 0.1) { sp = 5.6; this.stamina -= 20 * dt * this.stamMul.swim; }
+      this.stamina -= 4 * dt * this.stamMul.swim; this.stamRegenDelay = 1;
       if (mag > 0.05) { this.face = Math.atan2(mx, mz); p.x += (mx / mag) * sp * dt; p.z += (mz / mag) * sp * dt; }
       this.collide();
       const gy = this.groundAt(p.x, p.z);
@@ -118,10 +120,10 @@ export class PlayerActor {
   }
   onPlungeLand?: () => void; onDrown?: () => void;
   jump() {
-    if (this.mode === "ground") { if (!this.spendStam(0)) return; this.mode = "air"; this.vel.y = 8; const s = this.moving ? (this.sprintT ? 8 : 5.5) : 0; this.vel.x = Math.sin(this.face) * s; this.vel.z = Math.cos(this.face) * s; this.fallStartY = this.pos.y; this.pos.y += 0.05; return true; }
+    if (this.mode === "ground") { if (!this.spendStam(0)) return; this.mode = "air"; this.vel.y = 8 * this.jumpMul; const s = this.moving ? (this.sprintT ? 8 : 5.5) : 0; this.vel.x = Math.sin(this.face) * s; this.vel.z = Math.cos(this.face) * s; this.fallStartY = this.pos.y; this.pos.y += 0.05; return true; }
     if (this.mode === "air" && this.stamina > 1 && this.pos.y > this.groundAt(this.pos.x, this.pos.z) + 1.5) { this.mode = "glide"; this.vel.y = Math.max(this.vel.y, -1); return true; }
     if (this.mode === "glide") { this.mode = "air"; return true; }
-    if (this.mode === "climb") { if (this.spendStam(25)) this.climbLeap = 0.35; return true; }
+    if (this.mode === "climb") { if (this.spendStam(25 * this.stamMul.climb)) this.climbLeap = 0.35; return true; }
     if (this.mode === "swim") return false;
     return false;
   }

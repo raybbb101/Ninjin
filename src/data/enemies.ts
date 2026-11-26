@@ -1,7 +1,7 @@
 import type { El, DmgEl } from "./elements";
 export type EnemyBody = "puff" | "humanoid" | "golem" | "wisp";
 export interface EnemyDef {
-  id: string; name: string; body: EnemyBody; el?: El; hp: number; atk: number; spd: number; range: number; atkKind: "lunge" | "smash" | "shoot" | "cast"; atkEl: DmgEl; cd: number; scale: number; boss?: boolean; drop: string; color?: string; weapon?: string; look?: any; exp: number; res?: number;
+  id: string; name: string; body: EnemyBody; el?: El; hp: number; atk: number; spd: number; range: number; atkKind: "lunge" | "smash" | "shoot" | "cast"; atkEl: DmgEl; cd: number; scale: number; boss?: boolean; dummy?: boolean; drop: string; color?: string; weapon?: string; look?: any; exp: number; res?: number;
 }
 const puff = (el: El, name: string): EnemyDef => ({ id: "puff_" + el, name, body: "puff", el, hp: 260, atk: 14, spd: 2.6, range: 1.6, atkKind: "lunge", atkEl: el, cd: 2.6, scale: 1, drop: "puff", exp: 20 });
 const wisp = (el: El, name: string): EnemyDef => ({ id: "wisp_" + el, name, body: "wisp", el, hp: 300, atk: 16, spd: 2.2, range: 9, atkKind: "shoot", atkEl: el, cd: 3.2, scale: 1, drop: "wisp", exp: 25 });
@@ -14,11 +14,19 @@ export const ENEMIES: EnemyDef[] = [
     look: { hair: "#3a3a2a", style: "short", skin: "#d8a880", eye: "#2a1a1a", c1: "#4a5a2a", c2: "#a8a07a", c3: "#2a2a1a", acc: "hood" } },
   { id: "shaman", name: "呪術師", body: "humanoid", el: "shadow", hp: 360, atk: 22, spd: 2.6, range: 11, atkKind: "cast", atkEl: "shadow", cd: 3.4, scale: 1, drop: "humanoid", exp: 35, weapon: "catalyst",
     look: { hair: "#2a1a3a", style: "long", skin: "#c8a090", eye: "#c070ff", c1: "#3a1a4a", c2: "#7a4aa8", c3: "#c070ff", acc: "hood", skirt: true } },
+  { id: "guard", name: "山賊の盾兵", body: "humanoid", hp: 620, atk: 18, spd: 2.6, range: 2, atkKind: "smash", atkEl: "phys", cd: 2.8, scale: 1.1, drop: "humanoid", exp: 35, weapon: "claymore", res: 0.3,
+    look: { hair: "#4a3a2a", style: "short", skin: "#d8a880", eye: "#2a1a1a", c1: "#5a5a6a", c2: "#9a9aa8", c3: "#3a3a4a", acc: "hat" } },
+  ...(["fire", "water", "volt", "frost"] as El[]).map((el) => ({ id: "mage_" + el, name: { fire: "焔の術士", water: "潮の術士", volt: "雷の術士", frost: "霜の術士" }[el], body: "humanoid" as const, el, hp: 380, atk: 22, spd: 2.6, range: 11, atkKind: "cast" as const, atkEl: el, cd: 3.2, scale: 1, drop: "humanoid", exp: 35, weapon: "catalyst",
+    look: { hair: "#2a2a3a", style: "long", skin: "#d8b090", eye: "#fff", c1: { fire: "#7a2a1a", water: "#1a3a7a", volt: "#5a4a1a", frost: "#3a5a7a" }[el], c2: "#d8d0c0", c3: { fire: "#ff7a3c", water: "#3cb0ff", volt: "#ffd23c", frost: "#9ae8ff" }[el], acc: "hood", skirt: true } })),
+  { id: "golem_frost", name: "氷岩兵", body: "golem", el: "frost", hp: 950, atk: 30, spd: 1.8, range: 2.6, atkKind: "smash", atkEl: "frost", cd: 3.2, scale: 1.4, drop: "golem", exp: 55, res: 0.3 },
+  { id: "dummy", name: "練習用かかし", body: "golem", hp: 999999, atk: 0, spd: 0, range: 0, atkKind: "smash", atkEl: "phys", cd: 9999, scale: 1.1, drop: "golem", exp: 0, dummy: true },
   { id: "golem", name: "岩兵", body: "golem", hp: 900, atk: 30, spd: 1.8, range: 2.6, atkKind: "smash", atkEl: "phys", cd: 3.2, scale: 1.4, drop: "golem", exp: 50, res: 0.3 },
   // bosses
   { id: "boss_puff", name: "ぷるん大王", body: "puff", el: "water", hp: 6000, atk: 34, spd: 2.4, range: 4, atkKind: "smash", atkEl: "water", cd: 2.6, scale: 3.4, boss: true, drop: "puff", exp: 600 },
   { id: "boss_golem", name: "岩鎧の巨人", body: "golem", el: "fire", hp: 7000, atk: 44, spd: 1.8, range: 5, atkKind: "smash", atkEl: "fire", cd: 3, scale: 3.2, boss: true, drop: "golem", exp: 800, res: 0.1 },
   { id: "boss_wisp", name: "霜の大精霊", body: "wisp", el: "frost", hp: 7500, atk: 40, spd: 2, range: 14, atkKind: "cast", atkEl: "frost", cd: 2.4, scale: 3.4, boss: true, drop: "wisp", exp: 800 },
+  { id: "boss_storm", name: "雷鎧の守護者", body: "golem", el: "volt", hp: 7500, atk: 42, spd: 2.2, range: 5, atkKind: "smash", atkEl: "volt", cd: 2.6, scale: 3.2, boss: true, drop: "golem", exp: 800, res: 0.1 },
+  { id: "boss_grove", name: "古樹の大精霊", body: "wisp", el: "star", hp: 8000, atk: 40, spd: 2, range: 14, atkKind: "cast", atkEl: "star", cd: 2.4, scale: 3.6, boss: true, drop: "wisp", exp: 900 },
   { id: "boss_knight", name: "影の騎士", body: "humanoid", el: "shadow", hp: 10000, atk: 52, spd: 3.6, range: 3.2, atkKind: "smash", atkEl: "shadow", cd: 2.2, scale: 2.4, boss: true, drop: "humanoid", exp: 1200, weapon: "sword",
     look: { hair: "#1a1a28", style: "long", skin: "#8a8aa0", eye: "#ff4a6a", c1: "#14101c", c2: "#3a2a5a", c3: "#a070ff", acc: "horns", cape: true } },
 ];

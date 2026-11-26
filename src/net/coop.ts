@@ -128,6 +128,9 @@ export class Net {
       case "tele": g.showTele(new THREE.Vector3(d.p[0], d.p[1], d.p[2]), d.r, d.d); break;
       case "heal": if (d.to === g.pid) g.healParty(d.v, g.pid); break;
       case "shield": if (d.to === g.pid) g.addShield(d.v, g.pid); break;
+      case "evReq": if (g.role === "host" && !g.arena) { bus.emit("toast", "友達が星海の螺旋に挑戦したがっています！"); g.startEvent(); } break;
+      case "evNext": if (g.role === "guest" && g.ev) g.ev.floor = d.floor; break;
+      case "evClear": if (g.role === "guest" && g.ev) { g.ev.floor = d.floor; g.eventFloorClear(); } break;
       case "domReq": if (g.role === "host") { bus.emit("toast", "友達が秘境に入りたがっています！"); if (!g.arena) g.startDomain(d.id, d.lv); } break;
       case "arenaIn": if (g.role === "guest") g.joinArena(d.kind, d.id, d.lv, d.c); break;
       case "arenaOut": if (g.role === "guest" && g.arena) g.leaveArena(false); break;

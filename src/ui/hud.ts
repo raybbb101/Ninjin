@@ -13,7 +13,7 @@ import { MAILS } from "../data/mail";
 
 export class Hud {
   root = $("#hud"); joyBase: HTMLElement; joyKnob: HTMLElement; btn: Record<string, HTMLElement> = {}; party: HTMLElement; inter: HTMLElement; toastBox: HTMLElement; quest: HTMLElement; boss: HTMLElement; mini: HTMLCanvasElement; coopTag: HTMLElement;
-  joyId = -1; joyO = { x: 0, y: 0 }; camId = -1; camLast = { x: 0, y: 0 }; atkDown = 0; eDown = 0; keys = new Set<string>(); fpsEl: HTMLElement;
+  obj!: HTMLElement; joyId = -1; joyO = { x: 0, y: 0 }; camId = -1; camLast = { x: 0, y: 0 }; atkDown = 0; eDown = 0; keys = new Set<string>(); fpsEl: HTMLElement;
   constructor(public g: Game, public openMenu: (name: string, arg?: any) => void) {
     const r = this.root; clear(r);
     this.joyBase = h("div", { class: "joy" }); this.joyKnob = h("div", { class: "knob" }); this.joyBase.append(this.joyKnob); r.append(this.joyBase);
@@ -27,12 +27,13 @@ export class Hud {
     this.mini.addEventListener("pointerdown", (e) => { e.stopPropagation(); openMenu("map"); });
     r.append(h("div", { class: "menu-btn", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu("main"); } }, "≡"));
     const tr = h("div", { class: "tr" });
-    for (const [k, label, icon] of [["mail", "メール", "✉"], ["gacha", "祈願", "✦"], ["quest", "任務", "!"], ["coop", "マルチ", "⇄"], ["chars", "キャラ", "☺"], ["bag", "バッグ", "▣"]]) tr.append(h("div", { class: "ic", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu(k); } }, h("b", {}, icon), h("small", {}, label)));
+    for (const [k, label, icon] of [["gacha", "祈願", "✦"], ["quest", "任務", "!"], ["coop", "マルチ", "⇄"], ["chars", "キャラ", "☺"], ["bag", "バッグ", "▣"]]) tr.append(h("div", { class: "ic", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu(k); } }, h("b", {}, icon), h("small", {}, label)));
     r.append(tr);
     this.quest = h("div", { class: "qtrack", onpointerdown: (e: Event) => { e.stopPropagation(); openMenu("quest"); } }); r.append(this.quest);
     this.boss = h("div", { class: "bossbar" }); r.append(this.boss);
     this.coopTag = h("div", { class: "cooptag" }); r.append(this.coopTag);
     this.fpsEl = h("div", { class: "fps" }); r.append(this.fpsEl);
+    this.obj = h("div", { class: "objective" }); r.append(this.obj);
     this.bind();
     bus.on("party", () => this.buildParty()); bus.on("chars", () => this.buildParty()); bus.on("toast", (t: string) => this.toast(t));
     bus.on("loot", (l: string[]) => this.toast(l.join("　")));
@@ -106,12 +107,14 @@ export class Hud {
     if (key !== this.interKey) { this.interKey = key; clear(this.inter); for (const it of g.interactables) this.inter.append(h("div", { class: "ib", onpointerdown: (ev: Event) => { ev.stopPropagation(); it.act(); } }, h("b", {}, "F"), it.label)); }
     // quest tracker
     const st = curStep(), qq = curQuest();
-    const qk = st ? qq!.id + S.quest.step : "none" + S.daily.date;
-    if (qk !== this.qKey) { this.qKey = qk; clear(this.quest); if (st) this.quest.append(h("div", { class: "qt" }, qq!.chapter + "「" + qq!.title + "」"), h("div", { class: "qs" }, "◆ " + st.text)); else this.quest.append(h("div", { class: "qs" }, "冒険を楽しもう！")); }
+    const qk = st ? qq!.id + S.quest.step : "none" + S.daily.date + (S.daily.tasks || []).map((t) => t.n).join();
+    if (qk !== this.qKey) { this.qKey = qk; clear(this.quest); if (st) this.quest.append(h("div", { class: "qt" }, qq!.chapter + "「" + qq!.title + "」"), h("div", { class: "qs" }, "◆ " + st.text)); else { const dd = S.daily.tasks || []; this.quest.append(h("div", { class: "qt" }, "毎日の依頼"), ...dd.slice(0, 4).map((t) => h("div", { class: "qs" }, `${t.n >= t.goal ? "✓" : "・"} ${t.text} ${t.n}/${t.goal}`))); } }
     const sp = stepPos(st); if (sp) { const d = Math.hypot(sp.x - p.pos.x, sp.z - p.pos.z); (this.quest.lastElementChild as HTMLElement).dataset.d = Math.round(d) + "m"; }
     // boss
     const b = g.bossActive; this.boss.style.display = b ? "block" : "none";
     if (b) this.boss.innerHTML = `<div class="bn">${b.def.name} <small>Lv.${b.lvl}</small></div><div class="bb"><i style="width:${(b.hp / b.maxHp) * 100}%"></i></div>`;
+    const ot = g.trial ? `試練「${g.trial.name}」を起こそう：${g.trial.n} / ${g.trial.need}` : g.ev && g.arena ? `星海の螺旋 第${g.ev.floor}層` : g.arena?.kind === "domain" ? `秘境 ウェーブ ${Math.max(1, g.arena.wave + 1)}` : "";
+    this.obj.style.display = ot ? "block" : "none"; this.obj.textContent = ot;
     this.coopTag.textContent = g.role === "solo" ? "" : g.role === "host" ? `マルチ中（ホスト）・${g.remotes.size + 1}人` : "マルチ中（ゲスト）";
     this.fpsEl.textContent = S.settings.fps ? `${fps.toFixed(0)} fps / ${g.gfx.q}` : "";
     this.miniT -= dt; if (this.miniT <= 0) { this.miniT = 0.1; this.drawMini(); }
@@ -132,6 +135,7 @@ export class Hud {
       else if (q.type === "domain" || q.type === "statue" || q.type === "tower") { c.fillStyle = q.type === "statue" ? "#8aff8a" : "#c08aff"; c.fillRect(dx - 3, dz - 3, 6, 6); }
       else if (q.type === "npc") { c.fillStyle = "#ffd84a"; c.beginPath(); c.arc(dx, dz, 2.5, 0, 7); c.fill(); }
     }
+    if (g.members.some((m) => m.passive("chest"))) for (const ch of g.chestList()) { const dx = (ch.x - p.x) * sc, dz = (ch.z - p.z) * sc; if (dx * dx + dz * dz > 60 * 60) continue; c.fillStyle = "#ffd84a"; c.fillRect(dx - 3, dz - 2, 6, 4); c.fillStyle = "#8a5a2a"; c.fillRect(dx - 3, dz - 0.5, 6, 1); }
     const sp = stepPos(curStep()); if (sp) { let dx = (sp.x - p.x) * sc, dz = (sp.z - p.z) * sc; const l = Math.hypot(dx, dz); if (l > 56) { dx *= 56 / l; dz *= 56 / l; } c.fillStyle = "#ffd84a"; c.beginPath(); c.moveTo(dx, dz - 6); c.lineTo(dx + 5, dz); c.lineTo(dx, dz + 6); c.lineTo(dx - 5, dz); c.fill(); }
     for (const r of g.remotes.values()) { c.fillStyle = "#ff9ad8"; c.beginPath(); c.arc((r.pos.x - p.x) * sc, (r.pos.z - p.z) * sc, 3.5, 0, 7); c.fill(); }
     c.restore();

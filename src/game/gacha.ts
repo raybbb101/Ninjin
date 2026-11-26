@@ -4,7 +4,7 @@ import { S, addChar, newWeapon, addItem, useItem, has, markDirty } from "./state
 import { bus } from "../core/events";
 
 export type BannerId = "beginner" | "standard" | "event" | "weapon";
-const LIMITED = ["raika", "kurou", "mikoto", "kagura"];
+const LIMITED = ["setsuna", "amane", "raika", "kurou", "mikoto", "kagura"];
 export function currentBanner() {
   const week = Math.floor((Date.now() / 86400000 + 3) / 7);
   const featured = LIMITED[week % LIMITED.length];

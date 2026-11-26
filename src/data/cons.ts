@@ -25,9 +25,13 @@ export const CONS: Record<string, Entry[]> = {
   fuyu: C(["長い冬", "qmore", 4], ["凍てつく刃", "shred", 0.2], "雪解け", ["寝起きの一撃", "ecd", 0.25], "冬将軍", ["吹雪の追撃", "nawave", 1.4]),
   yoru: C(["夜の渦", "emore", 2], ["百一夜", "qmore", 6], "夜目", ["月影の狙い", "critup", 0.15], "夜鳴きの歌", ["夜鳥", "summon", 1.0, "夜鳥"]),
   kaede: C(["長い秋", "emore", 4], ["落ち葉拾い", "qrefund", 12], "紅の髪飾り", ["燃える闘志", "critup", 0.15], "紅葉の嵐", ["葉舞の追撃", "nawave", 1.3]),
+  setsuna: C(["二枚羽", "echarge", 1], ["雷雲の上", "qmore", 2], "天の目", ["急降下", "critup", 0.2], "雷鳥の王", ["天雷の余波", "echo", 0.6]),
+  amane: C(["前奏", "energy", 6], ["四重奏", "emore", 4], "高らかに", ["拍手喝采", "partybuff", 0.2], "大海の楽譜", ["アンコール公演", "summon", 1.4, "水の歌い手"]),
+  hibana: C(["もう一回転", "emore", 1], ["火の粉", "shred", 0.15], "花火の音", ["大輪", "qmore", 2], "夜祭り", ["連発花火", "echo", 0.5]),
+  mizore: C(["予備の矢", "emore", 1], ["冷えた指", "critup", 0.15], "白い息", ["霙の重み", "shred", 0.15], "銀世界", ["雪の狙撃手", "summon", 0.9, "雪だるま"]),
   nagi: C(["凪の膜", "shieldq", 0.2], ["静かな海", "ecd", 0.2], "灯台の灯", ["潮だまり", "healhit", 0.015], "大凪の心", ["返す波", "echo", 0.5]),
 };
-const moreText = (s: SkillDef, v: number) => (["volley", "chain", "meteor"].includes(s.kind) ? `の数が${v}つ増える` : ["field", "turret", "vortex", "infuse", "buff"].includes(s.kind) ? `の効果時間が${v}秒のびる` : `の範囲とダメージが${Math.round(v * 10)}%アップ`);
+const moreText = (s: SkillDef, v: number) => (["volley", "chain", "meteor", "aim"].includes(s.kind) ? `の回数が${v}増える` : ["field", "turret", "vortex", "infuse", "buff", "stance", "leap"].includes(s.kind) ? `の効果時間が${v}秒のびる` : `の範囲とダメージが${Math.round(v * 10)}%アップ`);
 export function consDesc(id: string, i: number): { name: string; desc: string } {
   const d = charById(id), [name, code, v, extra] = CONS[id][i];
   const pct = Math.round(v * 100) + "%";

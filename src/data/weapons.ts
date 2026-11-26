@@ -32,6 +32,11 @@ export const WEAPONS: WeaponDef[] = [
   W("w_p5", "竜骨の槍", "polearm", 5, 48, { k: "cr", v: 0.33 }, "竜の骨", "全ダメージ+16%", { all: 0.16 }, { standard: true }),
   W("w_b5", "天穹の長弓", "bow", 5, 48, { k: "cr", v: 0.33 }, "天穹", "重撃ダメージ+40%、攻撃力+12%", { ca: 0.4, atkP: 0.12 }, { standard: true }),
   W("w_k5", "四季の書", "catalyst", 5, 46, { k: "atkP", v: 0.55 }, "四季", "元素ダメージ+16%", { el: 0.16 }, { standard: true }),
+  W("w_s4c", "雲切り", "sword", 4, 42, { k: "cr", v: 0.25 }, "雲間", "落下攻撃ダメージ+40%", { plunge: 0.4 }),
+  W("w_c4c", "回転大鉈", "claymore", 4, 44, { k: "atkP", v: 0.41 }, "遠心力", "重撃ダメージ+35%", { ca: 0.35 }),
+  W("w_p4c", "跳ね槍", "polearm", 4, 42, { k: "atkP", v: 0.41 }, "跳躍", "落下攻撃ダメージ+35%", { plunge: 0.35 }),
+  W("w_b4c", "狙撃の長弓", "bow", 4, 44, { k: "cd", v: 0.55 }, "一点集中", "重撃ダメージ+30%、重撃会心率+10%", { ca: 0.3, caCr: 0.1 }),
+  W("w_k4c", "精霊の鈴", "catalyst", 4, 42, { k: "er", v: 0.45 }, "呼び声", "召喚したものの与えるダメージ+35%", { summon: 0.35 }),
   // ★5 signatures (持ち武器)
   W("sig_sora", "星喰みの剣", "sword", 5, 48, { k: "cd", v: 0.66 }, "星の記憶", "会心率+10%、元素スキルダメージ+20%", { cr: 0.1, skill: 0.2 }, { sig: "sora" }),
   W("sig_homura", "紅蓮槌", "claymore", 5, 48, { k: "cr", v: 0.33 }, "鍛炉の熱", "攻撃力+20%、焔元素ダメージ+20%", { atkP: 0.2, fire: 0.2 }, { sig: "homura" }),
@@ -41,5 +46,7 @@ export const WEAPONS: WeaponDef[] = [
   W("sig_kurou", "月喰らい", "sword", 5, 48, { k: "cr", v: 0.33 }, "影喰らい", "会心ダメージ+40%、影元素ダメージ+12%", { cd: 0.4, shadow: 0.12 }, { sig: "kurou" }),
   W("sig_mikoto", "天球儀", "catalyst", 5, 46, { k: "er", v: 0.55 }, "星の巡り", "元素熟知+120、星元素ダメージ+16%", { em: 120, star: 0.16 }, { sig: "mikoto" }),
   W("sig_kagura", "狐火の弓", "bow", 5, 48, { k: "atkP", v: 0.5 }, "狐火", "会心率+12%、焔元素ダメージ+16%", { cr: 0.12, fire: 0.16 }, { sig: "kagura" }),
+  W("sig_setsuna", "天翔丸", "sword", 5, 48, { k: "cr", v: 0.33 }, "雷鳥の羽", "落下攻撃ダメージ+60%、雷元素ダメージ+12%", { plunge: 0.6, volt: 0.12 }, { sig: "setsuna" }),
+  W("sig_amane", "潮騒のタクト", "catalyst", 5, 46, { k: "hpP", v: 0.5 }, "合奏", "召喚したものの与えるダメージ+40%、HP+16%", { summon: 0.4, hpP: 0.16 }, { sig: "amane" }),
 ];
 export const weaponById = (id: string) => WEAPONS.find((w) => w.id === id)!;

@@ -22,8 +22,9 @@ export const NA: Record<string, { mv: number[]; dur: number[]; r: number; ca: nu
 export const reactBase = (lvl: number) => 18 + lvl * 9 + Math.pow(lvl / 10, 2) * 14;
 export function makeHit(g: Game, m: Member, mv: number, el: DmgEl, cat: Cat, icd: string, icdT: number, extra: Partial<Hit> = {}): Hit {
   const st = m.st, buffAtk = g.buffAtk > 0 ? g.buffAtkVal : 0;
-  let bonus = st.dmg[el] + (st.dmg[cat] || 0) + (m.infuse && (cat === "na" || cat === "ca" || cat === "plunge") ? m.infuse.bonus : 0) + (g.partyDmgT > 0 ? g.partyDmgV : 0);
-  const cr = st.cr + (g.eclipse > 0 ? 0.2 : 0) + (m.critT > 0 ? m.cv("critup") : 0);
+  let bonus = st.dmg[el] + (st.dmg[cat] || 0) + (m.infuse && (cat === "na" || cat === "ca" || cat === "plunge") ? m.infuse.bonus : 0) + (g.partyDmgT > 0 ? g.partyDmgV : 0)
+    + (m.stanceT > 0 && (cat === "na" || cat === "ca") ? m.stanceBuff : 0) + (m.hp < m.st.hp * 0.5 ? m.passive("lowHp") : 0) + (icd.startsWith("t") || icd.startsWith("sm") ? st.dmg.summon : 0);
+  const cr = st.cr + (g.eclipse > 0 ? 0.2 : 0) + (m.critT > 0 ? m.cv("critup") : 0) + (cat === "ca" ? st.dmg.caCr : 0);
   const shred = cat === "skill" || cat === "burst" ? m.cv("shred") : 0;
   const crit = Math.random() < cr;
   return { src: m.id, pid: g.pid, atk: st.atk + buffAtk, mv, el, cat, cr, cd: st.cd, bonus, em: st.em, lvl: m.cs.lvl, rb: st.dmg.react || 0, icd: m.id + icd, icdT, crit, ...(shred ? { shred } : {}), ...extra };
@@ -43,7 +44,7 @@ export function applyHit(g: Game, e: Enemy, h: Hit, depth = 0) {
   let label = "";
   const tb = 1 + (16 * h.em) / (h.em + 2000) + h.rb, rbase = reactBase(h.lvl) * tb;
   if (react) {
-    label = react.name; g.stats.reacts++; bus.emit("daily", "react", 1);
+    label = react.name; g.stats.reacts++; bus.emit("daily", "react", 1); bus.emit("reaction", react.name, h.pid);
     const pos = e.pos.clone();
     g.fxAt("react-bloom", pos, react.kind === "freeze" ? "frost" : h.el, 1);
     switch (react.kind) {
@@ -63,13 +64,14 @@ export function applyHit(g: Game, e: Enemy, h: Hit, depth = 0) {
   }
   if (h.shred) { e.resdown = Math.max(e.resT > 0 ? e.resdown : 0, h.shred); e.resT = Math.max(e.resT, 8); }
   g.damageEnemy(e, dmg, h.crit!, h.el, label, h.src);
-  if (h.kb && !e.boss && e.alive) { const d = e.pos.clone().sub(g.posOfPid(h.pid)); d.y = 0; d.normalize(); e.pos.addScaledVector(d, h.kb); }
+  if (h.kb && !e.boss && !e.def.dummy && e.alive) { const d = e.pos.clone().sub(g.posOfPid(h.pid)); d.y = 0; d.normalize(); e.pos.addScaledVector(d, h.kb); }
 }
 function dealReact(g: Game, e: Enemy, dmg: number, h: Hit) { if (!e.alive) return; const r = 1 - ((e.def.res || 0.1) - (e.resT > 0 ? e.resdown : 0)); g.damageEnemy(e, dmg * r, false, h.el, "", h.src, true); }
 
 // client side: attacks & skills ---------------------------------------------
 export interface Proj { pos: THREE.Vector3; vel: THREE.Vector3; hit: Hit; life: number; r: number; pierce: boolean; hitIds: Set<number>; fx: any; home?: Enemy | null; aoe?: number; visualOnly?: boolean }
-export interface Field { pos: THREE.Vector3; r: number; t: number; tick: number; every: number; onTick: (f: Field) => void; follow?: boolean; fxName?: string; el?: DmgEl; fxEvery?: number; fxT?: number; fxScale?: number }
+export interface Field { off?: number[];
+ pos: THREE.Vector3; r: number; t: number; tick: number; every: number; onTick: (f: Field) => void; follow?: boolean; fxName?: string; el?: DmgEl; fxEvery?: number; fxT?: number; fxScale?: number }
 export function nearestEnemy(g: Game, pos: THREE.Vector3, r: number, face?: number) {
   let best: Enemy | null = null, bd = r * r;
   for (const e of g.enemies.values()) { if (!e.alive) continue; const dx = e.pos.x - pos.x, dz = e.pos.z - pos.z, d = dx * dx + dz * dz; if (d < bd) { bd = d; best = e; } }
@@ -78,12 +80,14 @@ export function nearestEnemy(g: Game, pos: THREE.Vector3, r: number, face?: numb
 export function faceToward(g: Game, r = 7) { const p = g.player, e = nearestEnemy(g, p.pos, r); if (e) p.face = Math.atan2(e.pos.x - p.pos.x, e.pos.z - p.pos.z); return e; }
 export function normalAttack(g: Game, m: Member, step: number, charged: boolean) {
   const t = NA[m.def.weapon], p = g.player, tgt = faceToward(g, t.ranged ? 14 : 6);
-  const el: DmgEl = m.infuse ? m.infuse.el : m.def.weapon === "catalyst" ? m.def.el : "phys";
-  const mv = (charged ? t.ca : t.mv[step]) * m.mult(0), cat = charged ? "ca" : "na";
+  const el: DmgEl = m.infuse ? m.infuse.el : m.stanceT > 0 || m.def.weapon === "catalyst" ? m.def.el : "phys";
+  const aimed = charged && m.aimN > 0; if (aimed) m.aimN--;
+  const mv = (charged ? t.ca * (aimed ? 1 + m.aimBuff : 1) : t.mv[step]) * m.mult(0), cat = charged ? "ca" : "na";
+  if (aimed) aimBloom(g, m, t.ranged ? null : p.pos.clone());
   const fx = Math.sin(p.face), fz = Math.cos(p.face);
   if (m.def.weapon === "bow") {
     const bel: DmgEl = charged ? m.def.el : el;
-    g.shoot(m, p.pos.clone().add(new THREE.Vector3(fx * 0.8, 1.1, fz * 0.8)), tgt, 26, makeHit(g, m, mv, bel, cat, charged ? "ca" : "na", charged ? 0 : 2.5, { strong: charged }), { r: 0.6, scale: charged ? 0.9 : 0.6 });
+    g.shoot(m, p.pos.clone().add(new THREE.Vector3(fx * 0.8, 1.1, fz * 0.8)), tgt, 26, makeHit(g, m, mv, bel, cat, charged ? "ca" : "na", charged ? 0 : 2.5, { strong: charged }), { r: 0.6, scale: charged ? 0.9 : 0.6 }, aimed ? () => aimBloom(g, m, tgt ? tgt.pos.clone() : null) : undefined);
     return;
   }
   if (m.def.weapon === "catalyst") {
@@ -96,6 +100,7 @@ export function normalAttack(g: Game, m: Member, step: number, charged: boolean)
   else g.fxAt("crescent", c.clone().setY(c.y + 0.2), el, m.def.weapon === "claymore" ? 1.3 : 1, step % 2 === 1);
   g.hitArc(p.pos, p.face, r, pole ? 0.6 : 1.2, makeHit(g, m, mv, el, cat, "na", 2.5, { kb: m.def.weapon === "claymore" ? 0.8 : 0.25 }));
   naWave(g, m, charged);
+  if (m.stanceT > 0) { const dir = new THREE.Vector3(fx, 0, fz); g.shootDir(m, p.pos.clone().add(new THREE.Vector3(0, 0.9, 0)), dir, 18, makeHit(g, m, m.stanceMv * m.mult(1), m.def.el, "na", "st", 0.3), { r: 1.4, pierce: true, scale: 1.3, life: 0.45 }); }
   g.gainEnergy(0.4, m);
 }
 function naWave(g: Game, m: Member, charged: boolean) {
@@ -104,8 +109,14 @@ function naWave(g: Game, m: Member, charged: boolean) {
   g.shootDir(m, p.pos.clone().add(new THREE.Vector3(0, 1, 0)), dir, 20, makeHit(g, m, v, m.def.el, "na", "nw", 0.5), { r: 1.6, pierce: true, scale: 1.6, life: 0.6 });
 }
 export function plunge(g: Game, m: Member) {
-  const p = g.player; g.fxAt("sigil-burst", p.pos, m.infuse ? m.infuse.el : "phys", 0.7); g.shake(0.25);
-  g.hitCircle(p.pos, 3, makeHit(g, m, 1.9 * m.mult(0), m.infuse ? m.infuse.el : m.def.weapon === "catalyst" ? m.def.el : "phys", "plunge", "pl", 1, { kb: 1.2 }));
+  const p = g.player, lp = m.leapT > 0, el: DmgEl = lp ? m.def.el : m.infuse ? m.infuse.el : m.def.weapon === "catalyst" ? m.def.el : "phys", r = lp ? 4.5 : 3;
+  g.fxAt(lp ? "starfall" : "sigil-burst", p.pos, el, lp ? 0.9 : 0.7); g.shake(lp ? 0.4 : 0.25);
+  g.hitCircle(p.pos, r, makeHit(g, m, 1.9 * m.mult(0) * (1 + (lp ? m.leapBuff : 0)), el, "plunge", "pl", lp ? 0.5 : 1, { kb: 1.2, strong: lp }));
+  if (lp) g.gainEnergy(1.5, m);
+}
+function aimBloom(g: Game, m: Member, at: THREE.Vector3 | null) {
+  const c = at || g.player.pos.clone(); g.fxAt("react-bloom", c, m.def.el, 1.1);
+  g.later(0.12, () => g.hitCircle(c, 3.2, makeHit(g, m, m.aimMv * m.mult(1), m.def.el, "ca", "ab", 0.3)));
 }
 export function castSkill(g: Game, m: Member, isBurst: boolean, scale = 1, echo = false) {
   const base: SkillDef = isBurst ? m.def.burst : m.def.skill, p = g.player, el = m.def.el;
@@ -113,6 +124,7 @@ export function castSkill(g: Game, m: Member, isBurst: boolean, scale = 1, echo 
   if (more) { if (["volley", "chain", "meteor"].includes(d.kind)) d.n = (d.n || 1) + more; else if (["field", "turret", "vortex", "infuse", "buff"].includes(d.kind)) d.dur = (d.dur || 8) + more; else { d.r = (d.r || 3) * (1 + more * 0.1); d.mv = d.mv * (1 + more * 0.1); } }
   const ti = isBurst ? 2 : 1, mv = d.mv * m.mult(ti) * scale, cat = isBurst ? "burst" : "skill", tag = isBurst ? (echo ? "Q2" : "Q") : "E";
   if (!echo) consAfterCast(g, m, isBurst);
+  if (!["leap", "stance", "aim"].includes(d.kind)) faceToward(g, 9);
   const fx = Math.sin(p.face), fz = Math.cos(p.face), front = p.pos.clone().add(new THREE.Vector3(fx * 1.5, 0, fz * 1.5));
   const hit = (mvv = mv, icd = tag, icdT = 0.4, x: Partial<Hit> = {}) => makeHit(g, m, mvv, el, cat, icd, icdT, { strong: isBurst, ...x });
   let gave = false; const particles = () => {
@@ -136,9 +148,14 @@ export function castSkill(g: Game, m: Member, isBurst: boolean, scale = 1, echo 
       break;
     }
     case "turret": {
-      const c = front.clone(); c.y = heightAt(c.x, c.z);
-      g.addField({ pos: c, r: d.r || 10, t: d.dur || 10, tick: 0, every: 1.5, fxName: "ward", el, fxEvery: 1.2, fxScale: 0.8, onTick: (f) => { const e = nearestEnemy(g, f.pos, f.r); if (e) { g.shoot(m, f.pos.clone().setY(f.pos.y + 1.4), e, 18, hit(mv, tag + "t", 1.5), { r: 0.6, scale: 0.7 }, particles); } } });
-      g.fxAt("beacon", c, el, 0.5); break;
+      const n = d.n || 1;
+      for (let i = 0; i < n; i++) {
+        const a = p.face + (n > 1 ? (i - (n - 1) / 2) * 1.1 : 0), c = p.pos.clone().add(new THREE.Vector3(Math.sin(a) * 1.8, 0, Math.cos(a) * 1.8)); c.y = heightAt(c.x, c.z);
+        const follow = n > 1; // 複数の精霊はプレイヤーについてくる
+        g.addField({ pos: c, r: d.r || 10, t: d.dur || 10, tick: i * 0.4, every: 1.5, fxName: follow ? "mote" : "ward", el, fxEvery: follow ? 0.6 : 1.2, fxScale: follow ? 1.6 : 0.8, follow, off: follow ? [Math.sin(i * 2.1) * 1.8, 1.6, Math.cos(i * 2.1) * 1.8] : undefined, onTick: (f) => { const e = nearestEnemy(g, f.pos, f.r); if (e) { g.shoot(m, f.pos.clone().setY(f.pos.y + (follow ? 0.2 : 1.4)), e, 18, makeHit(g, m, mv, el, cat, "t" + tag + i, 1.5, { strong: isBurst }), { r: 0.6, scale: 0.7 }, particles); } } } as any);
+        g.fxAt("beacon", c, el, 0.5);
+      }
+      break;
     }
     case "field": {
       const c = p.pos.clone(), r = d.r || 5;
@@ -197,6 +214,14 @@ export function castSkill(g: Game, m: Member, isBurst: boolean, scale = 1, echo 
       if (!hitSet.size) g.fxAt("hit-spark", front.setY(front.y + 1), el, 1.5);
       break;
     }
+    case "leap": {
+      p.mode = "air"; p.vel.set(Math.sin(p.face) * 3, 16, Math.cos(p.face) * 3); p.pos.y += 0.3; p.fallStartY = p.pos.y; p.invuln = 0.6;
+      m.leapT = d.dur || 8; m.leapBuff = d.buff || 0.8;
+      g.fxAt("sigil-burst", p.pos.clone(), el, (d.r || 3) / 3); g.later(0.1, () => { if (g.hitCircle(p.pos.clone().setY(p.pos.y - 2), d.r || 3, hit(mv, tag, 0, { kb: 1 }))) particles(); });
+      break;
+    }
+    case "stance": { m.stanceT = d.dur || 10; m.stanceBuff = d.buff || 0.3; m.stanceMv = d.mv; g.fxAt("ward", p.pos, el, 1.1, false, { follow: p.bb.root, loop: true, life: 1.2 }); g.fxAt("sigil-burst", p.pos, el, 0.7); break; }
+    case "aim": { m.aimN = d.n || 3; m.aimBuff = d.buff || 0.3; m.aimMv = d.mv; g.fxAt("mend", p.pos, el, 1); bus.emit("toast", `重撃強化 ×${m.aimN}（攻撃ボタン長押し）`); particles(); break; }
     case "vortex": {
       const c = front.clone().addScaledVector(new THREE.Vector3(fx, 0, fz), 2); c.y = heightAt(c.x, c.z);
       g.addField({ pos: c, r: d.r || 6, t: d.dur || 4, tick: 0, every: 0.5, fxName: "react-bloom", el, fxEvery: 0.45, fxScale: 1.3, onTick: (f) => { g.pullEnemies(f.pos, f.r, 1.6); fieldHit(f.pos, f.r * 0.6, mv); } });
@@ -207,6 +232,8 @@ export function castSkill(g: Game, m: Member, isBurst: boolean, scale = 1, echo 
 }
 function consAfterCast(g: Game, m: Member, isBurst: boolean) {
   const p = g.player;
+  if (isBurst && m.def.role === "plunge") { m.leapT = Math.max(m.leapT, 15); m.leapBuff = Math.max(m.leapBuff, 0.6); }
+  if (!isBurst && m.passive("spdE")) m.spdT = 8;
   if (!isBurst) {
     const en = m.cv("energy"); if (en) m.energy = Math.min(m.maxEnergy, m.energy + en);
     if (m.cv("critup")) m.critT = 8;
@@ -232,6 +259,7 @@ export function updateEnemy(g: Game, e: Enemy, dt: number) {
   e.dots = e.dots.filter((d) => d.t > 0);
   if (!e.alive) return;
   if (e.frozen > 0) { e.frozen -= dt; return; }
+  if (e.def.dummy) { e.hp = e.maxHp; return; }
   const spd = e.def.spd * (e.slow ? e.slow : 1) * (e.boss && e.hp < e.maxHp * 0.5 ? 1.25 : 1);
   const tp = g.nearestPlayer(e.pos);
   e.stateT += dt; e.atkCd -= dt * (e.boss && e.hp < e.maxHp * 0.5 ? 1.4 : 1);

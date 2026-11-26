@@ -93,7 +93,7 @@ export function arExpNeed(ar: number) { return 375 + ar * ar * 25; }
 export function worldLevel() { return Math.min(8, Math.floor(Math.max(0, S.ar - 12) / 6)); }
 export function addAR(n: number) {
   S.arExp += n; let up = false;
-  while (S.ar < 60 && S.arExp >= arExpNeed(S.ar)) { S.arExp -= arExpNeed(S.ar); S.ar++; up = true; addItem("gem", 100); if (S.ar % 5 === 0) addItem("ticket_g", 1); }
+  while (S.ar < 60 && S.arExp >= arExpNeed(S.ar)) { S.arExp -= arExpNeed(S.ar); S.ar++; up = true; }
   if (up) bus.emit("toast", `冒険ランクが ${S.ar} に上がった！`);
   markDirty(); bus.emit("ar");
 }

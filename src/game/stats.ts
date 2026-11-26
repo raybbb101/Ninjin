@@ -5,6 +5,9 @@ import { RESONANCE, type El, type DmgEl } from "../data/elements";
 import type { CharState, WeaponInst, RelicInst } from "./state";
 import { S, relicByUid } from "./state";
 
+// イベント中だけ有効な追加ステータス（星海の螺旋のカードなど）
+export const EXTRA: Record<string, number> = {};
+const PASSIVE_KEY: Record<string, string> = { skillUp: "skill", burstUp: "burst", naUp: "na", caUp: "ca", plungeUp: "plunge", healUp: "heal", reactUp: "react", summonUp: "summon", critCA: "caCr" };
 export interface Stats { hp: number; atk: number; def: number; em: number; cr: number; cd: number; er: number; heal: number; dmg: Record<string, number>; baseAtk: number; cdr: number }
 export const ASC_CAP = [20, 40, 50, 60, 70, 80, 90];
 const ASC_BASE = [0, 0.38, 0.65, 1.0, 1.28, 1.55, 1.83];
@@ -48,6 +51,9 @@ export function computeStats(c: CharState, w: WeaponInst | undefined, relics: (R
     cnt[r.set] = (cnt[r.set] || 0) + 1;
   }
   for (const s of SETS) { if ((cnt[s.id] || 0) >= 2) for (const k in s.b2) A(k, s.b2[k]); if ((cnt[s.id] || 0) >= 4) for (const k in s.b4) A(k, s.b4[k]); }
+  for (const p of def.passives || []) if (PASSIVE_KEY[p.code]) A(PASSIVE_KEY[p.code], p.v);
+  for (const id of party) for (const p of charById(id).passives || []) if (p.code === "teamDmg") A("all", p.v);
+  for (const k in EXTRA) A(k, EXTRA[k]);
   let cdr = 0;
   for (const e of partyResonance(party)) {
     if (e === "fire") A("atkP", 0.25); if (e === "water") { A("hpP", 0.25); A("heal", 0.15); } if (e === "volt") A("er", 0.3);
@@ -56,7 +62,7 @@ export function computeStats(c: CharState, w: WeaponInst | undefined, relics: (R
   const baseAtk = b.atk + wAtk;
   const dmg: Record<string, number> = {};
   for (const k of ["fire", "water", "volt", "frost", "star", "shadow", "phys"]) dmg[k] = (add[k] || 0) + (k !== "phys" ? add.el || 0 : 0) + (add.all || 0);
-  for (const k of ["na", "ca", "skill", "burst", "react", "plunge"]) dmg[k] = add[k] || 0;
+  for (const k of ["na", "ca", "skill", "burst", "react", "plunge", "summon", "caCr"]) dmg[k] = add[k] || 0;
   return {
     hp: b.hp * (1 + (add.hpP || 0)) + (add.hp || 0), atk: baseAtk * (1 + (add.atkP || 0)) + (add.atk || 0), def: b.def * (1 + (add.defP || 0)) + (add.def || 0),
     em: add.em || 0, cr: 0.05 + (add.cr || 0), cd: 0.5 + (add.cd || 0), er: 1 + (add.er || 0), heal: add.heal || 0, dmg, baseAtk, cdr,

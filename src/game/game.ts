@@ -19,6 +19,11 @@ import { FR, buildAtlas, FW, FH } from "../gfx/charsprite";
 import { Billboard } from "../gfx/billboard";
 import { charById } from "../data/characters";
 import { questOnEvent, dailyEvent } from "./quests";
+import { CHARS } from "../data/characters";
+import { WEAPONS } from "../data/weapons";
+import { REACTIONS, type El as ElT } from "../data/elements";
+import { CARDS, cardById } from "../data/cards";
+import { EXTRA } from "./stats";
 
 export interface Input { mx: number; my: number; sprint: boolean; atkHeld: boolean; atkTap: boolean; atkHold: boolean; eTap: boolean; eHold: boolean; qTap: boolean; jump: boolean; camDX: number; camDY: number; zoom: number }
 export interface Num { x: number; y: number; z: number; text: string; color: string; t: number; big: boolean }
@@ -40,11 +45,13 @@ export class Game {
   timers: { t: number; f: () => void }[] = []; nums: Num[] = []; tele: { mesh: THREE.Mesh; t: number; max: number }[] = [];
   camYaw = 0; camPitch = 0.42; camDist = 11; camT = new THREE.Vector3(); shakeT = 0;
   input: Input = { mx: 0, my: 0, sprint: false, atkHeld: false, atkTap: false, atkHold: false, eTap: false, eHold: false, qTap: false, jump: false, camDX: 0, camDY: 0, zoom: 0 };
-  now = 0; hour = 9; stats = { reacts: 0 }; eclipse = 0; partyDmgT = 0; partyDmgV = 0; buffAtk = 0; buffAtkVal = 0; shield = 0; shieldT = 0; switchCd = 0;
+  now = 0; hour = 9; stats = { reacts: 0 }; eclipse = 0; evMove = 0; partyDmgT = 0; partyDmgV = 0; buffAtk = 0; buffAtkVal = 0; shield = 0; shieldT = 0; switchCd = 0;
   combo = 0; comboT = 0; atkT = 0; atkFrameT = 0; atkQueued = false; holdT = 0; charging = false; burstLock = 0;
   pid = 1; role: "solo" | "host" | "guest" = "solo"; net: any = null; remotes = new Map<number, RemotePlayer>(); netEcho = false;
   chestObjs = new Map<string, THREE.Object3D>(); shardObjs = new Map<string, THREE.Mesh>(); interactables: { id: string; label: string; act: () => void; d: number }[] = [];
   arena: null | { kind: string; id: string; lv: number; waves: string[][]; wave: number; t: number; center: THREE.Vector3; ret: THREE.Vector3; mesh: THREE.Object3D; elvl: number; done: boolean; tlimit: number } = null;
+  trial: null | { key: string; name: string; n: number; need: number; els: [ElT, ElT] } = null;
+  ev: null | { floor: number; picks: string[]; special: Set<string>; vampCd: number } = null;
   bossActive: Enemy | null = null; paused = false; dialogOpen = false; spawnT = 0; saveT = 0; netT = 0; lastWpCheck = 0; dead = false;
   private telePool: THREE.Mesh[] = []; npcs: { id: string; bb: Billboard; x: number; z: number; face: number }[] = [];
   constructor(canvas: HTMLCanvasElement) {
@@ -54,7 +61,7 @@ export class Game {
     this.view = new WorldView(this.gfx.scene);
     this.gfx.scene.add(this.fx.group);
     this.applyQuality();
-    if (!S.pos.x && !S.pos.z) S.pos = { x: START.x, y: heightAt(START.x, START.z), z: START.z };
+    if ((!S.pos.x && !S.pos.z) || !S.flags.v03) { S.pos = { x: START.x, y: heightAt(START.x, START.z), z: START.z }; S.flags.v03 = 1; }
     this.player = new PlayerActor(this.gfx.scene, S.party[0]);
     this.player.pos.set(S.pos.x, heightAt(S.pos.x, S.pos.z), S.pos.z); this.player.stamMax = S.stamMax; this.player.stamina = S.stamMax;
     this.player.onPlungeLand = () => plunge(this, this.cur); this.player.onDrown = () => this.wipe("溺れてしまった…");
@@ -63,8 +70,9 @@ export class Game {
     for (let i = 0; i < 8; i++) { const m = new THREE.Mesh(new THREE.RingGeometry(0.85, 1, 32).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({ color: 0xff3a3a, transparent: true, opacity: 0.6, depthWrite: false })); m.visible = false; m.renderOrder = 3; this.gfx.scene.add(m); this.telePool.push(m); }
     for (const p of POIS) if (p.type === "shard" && !S.shards[p.id]) { const m = new THREE.Mesh(new THREE.OctahedronGeometry(0.35), new THREE.MeshBasicMaterial({ color: 0x9af0ff })); m.position.set(p.x, p.y, p.z); m.visible = false; this.gfx.scene.add(m); this.shardObjs.set(p.id, m); }
     for (const q of POIS) if (q.type === "npc") { const bb = new Billboard(buildAtlas(q.id, q.data.look, "none" as any), FW, FH); bb.root.position.set(q.x, q.y, q.z); bb.shadow.position.set(q.x, q.y + 0.06, q.z); this.gfx.scene.add(bb.root, bb.shadow); this.npcs.push({ id: q.id, bb, x: q.x, z: q.z, face: 0 }); addCollider({ x: q.x, z: q.z, r: 0.5 }); }
-    bus.on("chars", () => { const ids = this.myParty().filter((id) => S.chars[id]); if (ids.join() !== this.members.map((m) => m.id).join()) this.buildParty(); else this.members.forEach((m) => m.refresh()); });
+    bus.on("chars", () => { if (this.trial) return; const ids = this.myParty().filter((id) => S.chars[id]); if (ids.join() !== this.members.map((m) => m.id).join()) this.buildParty(); else this.members.forEach((m) => m.refresh()); });
     bus.on("daily", (k: string, n: number) => dailyEvent(k, n));
+    bus.on("reaction", (name: string, pid: number) => this.onReaction(name, pid));
   }
   applyQuality() { const Q = QUALITY[this.gfx.q]; this.view.near = Q.near; this.view.grassN = Q.grass; }
   get cur() { return this.members[this.active]; }
@@ -86,6 +94,7 @@ export class Game {
   aoe(pos: THREE.Vector3, r: number, f: (e: Enemy) => void) { for (const e of this.enemiesNear(pos, r)) f(e); }
   sendHit(e: Enemy, h: Hit) {
     this.elementAt(e.pos, h.el);
+    if (this.ev?.special.has("vamp") && this.now - this.ev.vampCd > 1) { this.ev.vampCd = this.now; const m = this.cur; if (!m.dead) m.hp = Math.min(m.st.hp, m.hp + m.st.hp * 0.015); }
     if (this.role === "guest") { this.net?.send({ t: "hit", id: e.id, h }); e.hurtFlash = 0.15; }
     else applyHit(this, e, h);
   }
@@ -115,7 +124,7 @@ export class Game {
     this.projs.push({ pos: from.clone(), vel, hit: h, life: o.life || 1.2, r: o.r || 0.6, pierce: !!o.pierce, hitIds: new Set(), fx: f, home, aoe: o.aoe, ...(onHit ? { onHit } : {}) } as any);
   }
   addField(f: Field) { this.fields.push(f); }
-  pullEnemies(c: THREE.Vector3, r: number, k: number) { if (this.role === "guest") { this.net?.send({ t: "pull", c: [c.x, c.y, c.z], r, k }); return; } for (const e of this.enemiesNear(c, r)) { if (e.boss) continue; const d = c.clone().sub(e.pos); d.y = 0; const l = d.length(); if (l > 0.8) e.pos.addScaledVector(d, Math.min(k, l - 0.8) / l); } }
+  pullEnemies(c: THREE.Vector3, r: number, k: number) { if (this.role === "guest") { this.net?.send({ t: "pull", c: [c.x, c.y, c.z], r, k }); return; } for (const e of this.enemiesNear(c, r)) { if (e.boss || e.def.dummy) continue; const d = c.clone().sub(e.pos); d.y = 0; const l = d.length(); if (l > 0.8) e.pos.addScaledVector(d, Math.min(k, l - 0.8) / l); } }
   gainEnergy(n: number, m: Member | null, particle = false) {
     for (const x of this.members) { if (x.dead) continue; const same = m && x.def.el === m.def.el ? 1.3 : 1, on = x === this.cur ? 1 : 0.6; x.energy = Math.min(x.maxEnergy, x.energy + n * same * on * x.st.er); }
     if (particle && m) this.fxAt("mote", this.player.pos.clone().setY(this.player.pos.y + 1.6), m.def.el, 1.2, false, { life: 0.5, loop: true });
@@ -207,7 +216,7 @@ export class Game {
   }
   rewardKill(defId: string, lvl: number, pos?: THREE.Vector3) {
     const d = enemyById(defId), fam = DROP_FAMILY[d.drop], tier = lvl >= 40 ? 2 : lvl >= 20 ? 1 : 0, rng = Math.random;
-    addItem("coin", Math.round((40 + lvl * 6) * (d.boss ? 12 : 1)));
+    addItem("coin", Math.round((40 + lvl * 6) * (d.boss ? 12 : 1) * (1 + this.members.reduce((a, x) => a + x.passive("coin"), 0))));
     addItem(fam[tier], d.boss ? 4 : rng() < 0.6 ? 1 : 2); if (tier > 0 && rng() < 0.5) addItem(fam[tier - 1], 1); if (rng() < 0.08 + (d.boss ? 1 : 0)) addItem(fam[Math.min(2, tier + 1)], 1);
     addAR(d.boss ? 100 : 3); S.stats.kills++; if (!d.boss && Math.random() < 0.06) addItem("gem", 5);
     if (d.boss && d.el) addItem("gem_" + d.el, 2 + Math.floor(lvl / 25));
@@ -261,7 +270,7 @@ export class Game {
       }
     }
   }
-  questAllowsKnight() { return S.quest.main >= 5; }
+  questAllowsKnight() { return true; }
   addEnemy(defId: string, lvl: number, x: number, z: number, id?: number) { const e = new Enemy(this.gfx.scene, defId, lvl, x, z, id); this.enemies.set(e.id, e); return e; }
   checkCamp(id: string) {
     const left = [...this.enemies.values()].filter((e) => e.camp === id && e.alive);
@@ -270,7 +279,10 @@ export class Game {
     if (!S.opened["campchest_" + id]) { S.flags["cc_" + id] = 1; bus.emit("toast", "拠点を制圧した！宝箱が現れた"); }
     questOnEvent(this, "camp", id);
   }
-  bossDefeated(id: string, e: Enemy) { S.bosses[id] = Date.now(); markDirty(); bus.emit("toast", `${e.def.name}を倒した！`); questOnEvent(this, "boss", id); }
+  bossDefeated(id: string, e: Enemy) {
+    S.bosses[id] = Date.now(); const first = (S.flags.bossFirst ||= {}); bus.emit("toast", `${e.def.name}を倒した！`);
+    if (!first[id]) { first[id] = 1; addItem("gem", 800); addItem("ticket_g", 2); bus.emit("loot", ["初めての撃破ボーナス！", "星晶 ×800", "金の願い札 ×2"]); }
+    markDirty(); questOnEvent(this, "boss", id); }
   // ---------------- chests & interactables ----------------
   chestList() {
     const list: { id: string; x: number; z: number; tier: number }[] = [];
@@ -309,6 +321,8 @@ export class Game {
       else if (q.type === "statue") add(q.id, q.x, q.z, 6, "星の像に祈る", () => bus.emit("statue", q.id));
       else if (q.type === "domain") add(q.id, q.x, q.z, 6, `${q.name}に入る`, () => bus.emit("domain", q.id));
       else if (q.type === "tower") add(q.id, q.x, q.z + 3, 6, "星の塔に挑む", () => bus.emit("tower"));
+      else if (q.type === "school") add(q.id, q.x, q.z, 6, "元素の学び舎に入る", () => bus.emit("school"));
+      else if (q.type === "event") add(q.id, q.x, q.z, 6, "星海の螺旋（イベント）", () => bus.emit("eventMenu"));
       else if (q.type === "waypoint" && !S.wps[q.id] && dist2(p.x, p.z, q.x, q.z) < 36) { S.wps[q.id] = 1; markDirty(); addAR(20); bus.emit("toast", `ワープポイント「${q.name}」を解放した`); this.fxAt("beacon", new THREE.Vector3(q.x, q.y, q.z), "water", 1.2); questOnEvent(this, "goto", q.id); }
     }
     // quest goto targets
@@ -331,7 +345,7 @@ export class Game {
     this.enterArena("domain", id, lv, waves, this.domainLevel(lv));
   }
   enterArena(kind: string, id: string, lv: number, waves: string[][], elvl: number, tlimit = 0) {
-    if (this.role === "guest" || (this.role === "host" && kind !== "domain")) { bus.emit("toast", kind === "domain" ? "ホストだけが秘境を始められます" : "マルチプレイ中は入れません"); return; }
+    if (this.role === "guest" || (this.role === "host" && kind !== "domain" && kind !== "event")) { bus.emit("toast", kind === "domain" ? "ホストだけが秘境を始められます" : "マルチプレイ中は入れません"); return; }
     if (this.arena) return;
     const center = new THREE.Vector3(0, 60, -760);
     const g = new THREE.Group();
@@ -357,13 +371,14 @@ export class Game {
     this.arena = { kind, id, lv, waves: [], wave: 0, t: 0, center, ret: this.player.pos.clone(), mesh: g, elvl: 0, done: false, tlimit: 0, remote: true } as any;
     this.player.arenaR = 20; this.player.arenaC.copy(center); this.player.pos.copy(center).add(new THREE.Vector3(3, 0, 12)); this.player.mode = "ground";
     for (const m of this.members) { m.dead = false; m.hp = m.st.hp; } this.player.stamina = this.player.stamMax;
-    this.camT.copy(this.player.pos); this.camYaw = 0; bus.emit("arena", true); bus.emit("toast", "ホストと一緒に秘境に入った！");
+    this.camT.copy(this.player.pos); this.camYaw = 0; bus.emit("arena", true);
+    if (kind === "event") { this.resetEvent(); bus.emit("cardPick", () => {}); bus.emit("toast", "ホストと一緒に星海の螺旋に入った！"); } else bus.emit("toast", "ホストと一緒に秘境に入った！");
   }
   nextWave() {
     const A = this.arena!; A.wave++;
-    if (A.wave >= A.waves.length) { A.done = true; bus.emit("arenaWin", A); return; }
+    if (A.wave >= A.waves.length) { this.arenaDone(); return; }
     bus.emit("toast", `ウェーブ ${A.wave + 1} / ${A.waves.length}`); this.net?.send({ t: "toast", s: `ウェーブ ${A.wave + 1} / ${A.waves.length}` });
-    A.waves[A.wave].forEach((id, i) => { const a = (i / A.waves[A.wave].length) * Math.PI * 2; const e = this.addEnemy(id, A.elvl + (enemyById(id).boss ? 3 : 0), A.center.x + Math.cos(a) * 9, A.center.z - 2 + Math.sin(a) * 6); e.arena = true; e.groundFn = (x, z) => this.player.groundAt(x, z); e.pos.y = A.center.y; e.home.copy(e.pos); this.fxAt("beacon", e.pos, "shadow", 0.8); });
+    A.waves[A.wave].forEach((id, i) => { const a = (i / A.waves[A.wave].length) * Math.PI * 2, tr = A.kind === "trial"; const e = this.addEnemy(id, A.elvl + (enemyById(id).boss ? 3 : 0), tr ? A.center.x + (i - 1) * 2.6 : A.center.x + Math.cos(a) * 9, tr ? A.center.z + 8.5 : A.center.z - 2 + Math.sin(a) * 6); e.arena = true; e.groundFn = (x, z) => this.player.groundAt(x, z); e.pos.y = A.center.y; e.home.copy(e.pos); this.fxAt("beacon", e.pos, "shadow", 0.8); });
   }
   leaveArena(win: boolean) {
     const A = this.arena; if (!A) return;
@@ -371,8 +386,78 @@ export class Game {
     A.mesh.removeFromParent(); this.arena = null; this.player.arenaR = 0;
     if (this.role === "host") this.net?.send({ t: "arenaOut" });
     this.player.pos.copy(A.ret); this.player.mode = "ground"; this.camT.copy(this.player.pos);
+    if (this.trial) { this.trial = null; this.members = []; this.buildParty(); }
+    if (A.kind === "event") this.endEvent();
     bus.emit("arena", false); void win;
   }
+  arenaDone() {
+    const A = this.arena!; A.done = true;
+    if (A.kind === "event") { this.net?.send({ t: "evClear", floor: this.ev?.floor }); this.eventFloorClear(); }
+    else bus.emit("arenaWin", A);
+  }
+  // ---------------- 元素の試練 ----------------
+  startTrial(key: string) {
+    if (this.role !== "solo") { bus.emit("toast", "マルチ中は試練に入れません"); return; }
+    const r = REACTIONS[key], els = key.split("+") as [ElT, ElT];
+    const pick = (el: ElT) => (CHARS.find((c) => c.el === el && S.chars[c.id]) || CHARS.find((c) => c.el === el && c.rarity === 4) || CHARS.find((c) => c.el === el))!;
+    const ids = [pick(els[0]).id, pick(els[1]).id];
+    this.members = ids.map((id) => { const d = charById(id), w = WEAPONS.find((x) => x.type === d.weapon && x.rarity === 4)!; return new Member(id, ids, { cs: { id, lvl: 50, exp: 0, asc: 3, cons: 0, tal: [6, 6, 6], weapon: -1, relics: {} }, w: { uid: -1, id: w.id, lvl: 50, exp: 0, asc: 3, ref: 1 } }); });
+    this.active = 0; this.player.setChar(ids[0]); bus.emit("party");
+    this.trial = { key, name: r.name, n: 0, need: 3, els };
+    this.enterArena("trial", key, 1, [["dummy", "dummy", "dummy"]], 30);
+  }
+  onReaction(name: string, pid: number) {
+    if (this.trial && pid === this.pid && name === this.trial.name && !this.arena?.done) {
+      this.trial.n++; bus.emit("toast", `「${name}」${this.trial.n} / ${this.trial.need}`);
+      if (this.trial.n >= this.trial.need) { this.arena!.done = true; const first = !(S.flags.trials ||= {})[this.trial.key]; S.flags.trials[this.trial.key] = 1; if (first) { addItem("gem", 60); addItem("exp2", 2); } markDirty(); bus.emit("trialWin", this.trial, first); }
+    }
+  }
+  // ---------------- 星海の螺旋（イベント） ----------------
+  static readonly EV_FLOORS = 12;
+  weekSeed() { return Math.floor((Date.now() / 86400000 + 3) / 7); }
+  eventWaves(floor: number): string[][] {
+    const r = new Rng(this.weekSeed() * 97 + floor * 13), coop = this.role === "host" ? 1 : 0;
+    const pool = ["bandit", "archer", "shaman", "guard", "golem", "golem_frost", "puff_fire", "puff_water", "puff_volt", "puff_frost", "wisp_star", "wisp_shadow", "mage_fire", "mage_water", "mage_volt", "mage_frost"];
+    const n = 3 + Math.floor(floor / 3) + coop;
+    const w1 = Array.from({ length: n }, () => r.pick(pool));
+    const w2 = floor % 4 === 0 ? [["boss_puff", "boss_storm", "boss_wisp", "boss_grove", "boss_golem", "boss_knight"][(floor / 4 - 1 + this.weekSeed()) % 6]] : Array.from({ length: n }, () => r.pick(pool));
+    return [w1, w2];
+  }
+  eventLevel(floor: number) { return 18 + floor * 6 + worldLevel() * 2; }
+  startEvent() {
+    if (this.role === "guest") { this.net?.send({ t: "evReq" }); bus.emit("toast", "ホストに挑戦をお願いしました"); return; }
+    this.resetEvent(); bus.emit("cardPick", () => this.enterArena("event", "ev", 1, this.eventWaves(1), this.eventLevel(1)));
+  }
+  resetEvent() { for (const k in EXTRA) delete EXTRA[k]; this.ev = { floor: 1, picks: [], special: new Set(), vampCd: 0 }; this.evMove = 0; this.members.forEach((m) => m.refresh()); }
+  pickCard(id: string) {
+    if (!this.ev) return; const c = cardById(id); this.ev.picks.push(id);
+    if (c.stat) for (const k in c.stat) EXTRA[k] = (EXTRA[k] || 0) + c.stat[k];
+    if (c.special) this.ev.special.add(c.special); if (c.special === "move") this.evMove += 0.2;
+    this.members.forEach((m) => m.refresh());
+    this.floorStartBuffs();
+  }
+  floorStartBuffs() {
+    if (!this.ev) return;
+    if (this.ev.special.has("shield")) this.addShieldAbs(this.cur.st.hp * 0.3, 30);
+    if (this.ev.special.has("energy")) for (const m of this.members) m.energy = Math.min(m.maxEnergy, m.energy + 30);
+  }
+  offerCards(): string[] { const r = new Rng(Date.now()); const ids = CARDS.map((c) => c.id); const out: string[] = []; while (out.length < 3) { const id = r.pick(ids); if (!out.includes(id)) out.push(id); } return out; }
+  eventFloorClear() {
+    const ev = this.ev; if (!ev) return; const f = ev.floor;
+    const wk = this.weekSeed(), st = (S.flags.ev ||= { week: wk, cleared: {} }); if (st.week !== wk) { st.week = wk; st.cleared = {}; }
+    const loot: string[] = [];
+    if (!st.cleared[f]) { st.cleared[f] = 1; const gems = 30 + f * 5; addItem("gem", gems); loot.push(`星晶 ×${gems}（今週はじめて）`); }
+    addItem("coin", 2000 + f * 600); loot.push(`コイン ×${2000 + f * 600}`); if (f % 3 === 0) { addItem("ore2", 3); addItem("exp2", 3); loot.push("精鉄 ×3", "冒険家の手記 ×3"); }
+    markDirty(); bus.emit("evFloor", f, loot, f >= Game.EV_FLOORS);
+  }
+  nextEventFloor() {
+    const A = this.arena; if (!A || !this.ev || this.role === "guest") return;
+    this.ev.floor++; A.lv = this.ev.floor; A.waves = this.eventWaves(this.ev.floor); A.wave = -1; A.done = false; A.t = 0; A.elvl = this.eventLevel(this.ev.floor);
+    for (const m of this.members) { m.dead = false; m.hp = Math.max(m.hp, m.st.hp * 0.5); }
+    this.net?.send({ t: "toast", s: `第${this.ev.floor}層へ！` }); this.net?.send({ t: "evNext", floor: this.ev.floor }); bus.emit("toast", `第${this.ev.floor}層`);
+    this.later(1.5, () => this.nextWave());
+  }
+  endEvent() { if (!this.ev) return; this.ev = null; for (const k in EXTRA) delete EXTRA[k]; this.evMove = 0; this.members.forEach((m) => m.refresh()); }
   // ---------------- main update ----------------
   switchTo(i: number, force = false) {
     if (i === this.active || i >= this.members.length || this.members[i].dead) return;
@@ -408,7 +493,10 @@ export class Game {
     this.switchCd -= dt; this.burstLock -= dt; this.eclipse = Math.max(0, this.eclipse - dt); this.buffAtk = Math.max(0, this.buffAtk - dt);
     if (this.shieldT > 0) { this.shieldT -= dt; if (this.shieldT <= 0) this.shield = 0; }
     this.partyDmgT = Math.max(0, this.partyDmgT - dt);
-    for (const x of this.members) { x.critT = Math.max(0, x.critT - dt); x.healCd -= dt; if (x.charges > x.maxCharges) x.charges = x.maxCharges; if (x.cdE > 0) { x.cdE -= dt; if (x.cdE <= 0) { x.cdE = 0; x.charges = Math.min(x.maxCharges, x.charges + 1); if (x.charges < x.maxCharges) x.cdE = x.eCdFull; } } else if (x.charges < x.maxCharges) x.cdE = x.eCdFull; if (x.infuse) { x.infuse.t -= dt; if (x.infuse.t <= 0) x.infuse = null; } }
+    const pp = (c: string) => this.members.reduce((a, x) => a + x.passive(c), 0);
+    p.stamMul.sprint = Math.max(0.3, 1 - pp("stam")); p.stamMul.climb = Math.max(0.3, 1 - pp("climb")); p.stamMul.glide = Math.max(0.3, 1 - pp("glide")); p.stamMul.swim = Math.max(0.3, 1 - pp("swim"));
+    p.jumpMul = 1 + m.passive("jump"); p.spdMul = 1 + (m.spdT > 0 ? m.passive("spdE") : 0) + (this.evMove || 0);
+    for (const x of this.members) { x.critT = Math.max(0, x.critT - dt); x.leapT = Math.max(0, x.leapT - dt); x.stanceT = Math.max(0, x.stanceT - dt); x.spdT = Math.max(0, x.spdT - dt); x.healCd -= dt; if (x.charges > x.maxCharges) x.charges = x.maxCharges; if (x.cdE > 0) { x.cdE -= dt; if (x.cdE <= 0) { x.cdE = 0; x.charges = Math.min(x.maxCharges, x.charges + 1); if (x.charges < x.maxCharges) x.cdE = x.eCdFull; } } else if (x.charges < x.maxCharges) x.cdE = x.eCdFull; if (x.infuse) { x.infuse.t -= dt; if (x.infuse.t <= 0) x.infuse = null; } }
     for (let i = this.timers.length - 1; i >= 0; i--) { const t = this.timers[i]; t.t -= dt; if (t.t <= 0) { this.timers.splice(i, 1); t.f(); } }
     // actions
     if (!this.dialogOpen && !this.paused && !this.dead) {
@@ -418,7 +506,7 @@ export class Game {
         if (p.mode === "air" || p.mode === "glide") { if (p.pos.y - p.groundAt(p.pos.x, p.pos.z) > 1.2) p.mode = "plunge"; }
         else if (p.mode === "ground") { if (this.atkT > 0.08) this.atkQueued = true; else this.doAttack(false); }
       }
-      if (I.atkHold) { I.atkHold = false; if (p.mode === "ground" && this.atkT <= 0.1) { const t = NA[m.def.weapon]; if (p.spendStam(t.caSt)) { this.combo = 0; this.doAttack(true); } } }
+      if (I.atkHold) { I.atkHold = false; if (p.mode === "ground" && this.atkT <= 0.1) { const t = NA[m.def.weapon]; if (p.spendStam(m.aimN > 0 ? 0 : t.caSt)) { this.combo = 0; this.doAttack(true); } } }
       if (I.eTap || I.eHold) { const h = I.eHold; I.eTap = I.eHold = false; this.tryE(h); }
       if (I.qTap) { I.qTap = false; this.tryQ(); }
     }
@@ -449,6 +537,7 @@ export class Game {
     }
     for (let i = this.fields.length - 1; i >= 0; i--) {
       const f = this.fields[i]; f.t -= dt; f.tick -= dt;
+      if (f.off) { f.pos.set(p.pos.x + f.off[0], p.pos.y + f.off[1] + Math.sin(this.now * 3 + i) * 0.2, p.pos.z + f.off[2]); }
       if (f.tick <= 0) { f.tick = f.every; f.onTick(f); }
       if (f.fxName) { f.fxT = (f.fxT ?? 0) - dt; if (f.fxT <= 0) { f.fxT = f.fxEvery || 1; this.fxAt(f.fxName, f.pos, f.el || null, f.fxScale || 1); } }
       if (f.t <= 0) this.fields.splice(i, 1);
@@ -458,7 +547,7 @@ export class Game {
     else for (const e of this.enemies.values()) { e.pos.lerp(e.netPos, Math.min(1, dt * 8)); }
     let boss: Enemy | null = null; for (const e of this.enemies.values()) if (e.boss && e.alive && e.pos.distanceToSquared(p.pos) < 40 * 40) boss = e; this.bossActive = boss;
     // arena
-    if (this.arena && !this.arena.done && !(this.arena as any).remote) { this.arena.t += dt; if (this.arena.wave >= 0 && ![...this.enemies.values()].some((e) => e.alive)) { this.arena.wave >= this.arena.waves.length - 1 ? (this.arena.wave++, this.arena.done = true, bus.emit("arenaWin", this.arena)) : this.nextWave(); } if (this.arena.tlimit && this.arena.t > this.arena.tlimit) { bus.emit("toast", "時間切れ…"); this.leaveArena(false); } }
+    if (this.arena && !this.arena.done && !(this.arena as any).remote) { this.arena.t += dt; if (this.arena.wave >= 0 && ![...this.enemies.values()].some((e) => e.alive)) { this.arena.wave >= this.arena.waves.length - 1 ? (this.arena.wave++, this.arenaDone()) : this.nextWave(); } if (this.arena.tlimit && this.arena.t > this.arena.tlimit) { bus.emit("toast", "時間切れ…"); this.leaveArena(false); } }
     // spawn & interact
     this.spawnT -= dt; if (this.spawnT <= 0) { this.spawnT = 0.7; this.spawnAround(); }
     this.updateInteract();

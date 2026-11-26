@@ -83,6 +83,7 @@ export class WorldView {
       if (w.plains > 0.55) { if (r < 0.085) { put("leaf", x, z, sc, rot); col({ x, z, r: 0.5 }); } else if (r < 0.14) put("bush", x, z, sc, rot); else if (r < 0.17) put("rock", x, z, sc, rot); else if (r < 0.17 + this.grassN / 200) put(r > 0.6 ? "flower" : "grass", x, z, sc, rot); }
       else if (w.canyon > 0.5) { if (r < 0.03) { put("cactus", x, z, sc, rot); col({ x, z, r: 0.5 }); } else if (r < 0.05) put("dead", x, z, sc, rot); else if (r < 0.1) put("rock", x, z, sc, rot); else if (r < 0.1 + this.grassN / 500) put("grass", x, z, sc, rot); }
       else if (w.peaks > 0.5) { if (r < 0.1 && !snow) { put("pine", x, z, sc, rot); col({ x, z, r: 0.5 }); } else if (r < 0.06) put("pine", x, z, sc, rot); else if (r < 0.14) put("rock", x, z, sc, rot); else if (!snow && r < 0.14 + this.grassN / 400) put("grass", x, z, sc, rot); }
+      else if (w.forest > 0.5) { if (r < 0.2) { put(r < 0.06 ? "pine" : "leaf", x, z, sc * 1.15, rot); col({ x, z, r: 0.5 }); } else if (r < 0.28) put("bush", x, z, sc, rot); else if (r < 0.31) put("rock", x, z, sc, rot); else if (r < 0.31 + this.grassN / 150) put(r > 0.55 ? "flower" : "grass", x, z, sc, rot); }
       else if (w.spire > 0.5) { if (r < 0.05) { put("crystal", x, z, sc, rot); col({ x, z, r: 0.6 }); } else if (r < 0.09) put("rock", x, z, sc, rot); }
       else if (r < 0.05) { put("leaf", x, z, sc, rot); col({ x, z, r: 0.5 }); } else if (r < 0.08) put("bush", x, z, sc, rot);
     }
@@ -154,6 +155,19 @@ export class WorldView {
         const top = new THREE.Mesh(new THREE.ConeGeometry(3.2, 5, 8), new THREE.MeshLambertMaterial({ color: 0x4a6ad8 })); top.position.y = 24.5; g.add(top);
         const star = new THREE.Mesh(new THREE.OctahedronGeometry(1), new THREE.MeshBasicMaterial({ color: 0xffd84a })); star.position.y = 28; star.name = "gem"; g.add(star);
         g.position.set(p.x, p.y, p.z); o = g; addCollider({ x: p.x, z: p.z, r: 3.2 });
+      } else if (p.type === "school") {
+        const g = new THREE.Group(), y = p.y;
+        const body = new THREE.Mesh(new THREE.BoxGeometry(8, 4.5, 6), wallM("#e8f0e0")); body.position.y = 2.25; g.add(body);
+        const rg = new THREE.CylinderGeometry(0.01, 6.2, 3, 4, 1); rg.rotateY(Math.PI / 4); rg.scale(1, 1, 0.75);
+        const roof = new THREE.Mesh(rg, new THREE.MeshLambertMaterial({ map: texOf(roofTex("#3a9a6a")) })); roof.position.y = 6; g.add(roof);
+        ["fire", "water", "volt", "frost", "star", "shadow"].forEach((el, i) => { const o = new THREE.Mesh(new THREE.OctahedronGeometry(0.35), new THREE.MeshBasicMaterial({ color: (EL_INFO as any)[el].color })); o.position.set(-3 + i * 1.2, 5, 3.2); g.add(o); });
+        g.position.set(p.x, y - 0.2, p.z); o = g; addCollider({ x: p.x, z: p.z, r: 4.2 });
+      } else if (p.type === "event") {
+        const g = new THREE.Group();
+        const ring = new THREE.Mesh(new THREE.TorusGeometry(2.6, 0.35, 6, 24), new THREE.MeshBasicMaterial({ color: 0xffd84a })); ring.position.y = 3.2; g.add(ring);
+        const portal = new THREE.Mesh(new THREE.CircleGeometry(2.3, 24), new THREE.MeshBasicMaterial({ color: 0x6a4ad8, transparent: true, opacity: 0.7, side: THREE.DoubleSide })); portal.position.y = 3.2; portal.name = "gem"; g.add(portal);
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(3, 3.4, 0.5, 8), new THREE.MeshLambertMaterial({ map: texOf(stoneTex()) })); base.position.y = 0.25; g.add(base);
+        g.position.set(p.x, p.y, p.z); o = g;
       } else if (p.type === "puzzle") {
         const g = new THREE.Group();
         (p.data.els as string[]).forEach((el, i) => {

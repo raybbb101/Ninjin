@@ -1,8 +1,8 @@
 import { fbm, ridged, smooth, clamp, lerp, hash2 } from "../core/math";
-export const HALF = 480, RES = 2, N = HALF * 2 / RES + 1, SEA = 0;
-export type Region = "plains" | "canyon" | "peaks" | "spire";
-export const REGION_NAME: Record<Region, string> = { plains: "翠風の野", canyon: "紅砂の谷", peaks: "霜嶺", spire: "影の高原" };
-const CEN: Record<Region, [number, number, number]> = { plains: [0, 140, 230], canyon: [290, -40, 170], peaks: [-250, -210, 200], spire: [200, -262, 85] };
+export const HALF = 640, RES = 2, N = HALF * 2 / RES + 1, SEA = 0;
+export type Region = "plains" | "canyon" | "peaks" | "spire" | "forest";
+export const REGION_NAME: Record<Region, string> = { plains: "翠風の野", canyon: "紅砂の谷", peaks: "霜嶺", spire: "影の高原", forest: "木漏れ日の森" };
+export const CEN: Record<Region, [number, number, number]> = { plains: [20, 190, 280], canyon: [380, -50, 220], peaks: [-330, -270, 250], spire: [260, -340, 110], forest: [-380, 240, 200] };
 export const FLATS: { x: number; z: number; r: number; h: number }[] = [];
 export function addFlat(x: number, z: number, r: number, h: number) { FLATS.push({ x, z, r, h }); }
 
@@ -19,7 +19,7 @@ export function regionAt(x: number, z: number): Region {
   return best;
 }
 export function rawHeight(x: number, z: number): number {
-  const d = Math.hypot(x, z * 1.05) / 455 + (fbm(x * 0.004 + 9, z * 0.004 - 3, 7, 3) - 0.5) * 0.42;
+  const d = Math.hypot(x, z * 1.05) / 600 + (fbm(x * 0.004 + 9, z * 0.004 - 3, 7, 3) - 0.5) * 0.42;
   const land = smooth(1.0, 0.8, d);
   const w = regionWeights(x, z);
   const n1 = fbm(x * 0.011, z * 0.011, 1, 4);
@@ -28,7 +28,8 @@ export function rawHeight(x: number, z: number): number {
   const canyon = 6 + (terr + Math.pow(fr, 12) / 6) * 62 - ridged(x * 0.01, z * 0.01, 4, 2) * 6;
   const peaks = 14 + Math.pow(ridged(x * 0.0065, z * 0.0065, 5, 5), 1.4) * 110 + n1 * 8;
   const spire = 34 + n1 * 10 + (fbm(x * 0.02, z * 0.02, 6, 2) - 0.5) * 6;
-  let h = plains * w.plains + canyon * w.canyon + peaks * w.peaks + spire * w.spire;
+  const forest = 6 + n1 * 16 + Math.pow(ridged(x * 0.008, z * 0.008, 8, 3), 2) * 24;
+  let h = plains * w.plains + canyon * w.canyon + peaks * w.peaks + spire * w.spire + forest * w.forest;
   h = lerp(-14, h, land);
   if (land < 0.98) h = Math.min(h, lerp(-14, 2.5, land) + (h - 2.5) * Math.pow(land, 3));
   for (const f of FLATS) { const dd = Math.hypot(x - f.x, z - f.z); if (dd < f.r * 1.8) h = lerp(f.h, h, smooth(f.r, f.r * 1.8, dd)); }
@@ -56,15 +57,15 @@ export function normalAt(x: number, z: number): [number, number, number] {
 export const slopeAt = (x: number, z: number) => 1 - normalAt(x, z)[1];
 const C = (h: string) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
 const PAL = {
-  grass: [C("#6cb44a"), C("#58a040"), C("#7ec456")], canyon: [C("#d08a4a"), C("#c87440"), C("#e0a060")], peaks: [C("#8aa070"), C("#7a9060"), C("#98a880")],
+  grass: [C("#6cb44a"), C("#58a040"), C("#7ec456")], forest: [C("#3e8a3a"), C("#33783a"), C("#4a9a44")], rockF: C("#6a7a5a"), canyon: [C("#d08a4a"), C("#c87440"), C("#e0a060")], peaks: [C("#8aa070"), C("#7a9060"), C("#98a880")],
   spire: [C("#5a4a78"), C("#4c3e68"), C("#6a5888")], rockP: C("#8a8478"), rockC: C("#a85a34"), rockK: C("#6e7080"), rockS: C("#3e3450"),
   sand: C("#e8d8a0"), snow: C("#eef4ff"), wet: C("#b8a878"),
 };
 export function colorAt(x: number, z: number, h: number, slope: number, out: number[]) {
   const w = regionWeights(x, z), n = hash2(Math.floor(x / 2), Math.floor(z / 2), 3), pi = n < 0.33 ? 0 : n < 0.66 ? 1 : 2;
-  const mixc = (a: Record<string, number[]>) => [0, 1, 2].map((k) => a.plains[k] * w.plains + a.canyon[k] * w.canyon + a.peaks[k] * w.peaks + a.spire[k] * w.spire);
-  let c = mixc({ plains: PAL.grass[pi], canyon: PAL.canyon[pi], peaks: PAL.peaks[pi], spire: PAL.spire[pi] });
-  const rock = mixc({ plains: PAL.rockP, canyon: PAL.rockC, peaks: PAL.rockK, spire: PAL.rockS });
+  const mixc = (a: Record<string, number[]>) => [0, 1, 2].map((k) => a.plains[k] * w.plains + a.canyon[k] * w.canyon + a.peaks[k] * w.peaks + a.spire[k] * w.spire + a.forest[k] * w.forest);
+  let c = mixc({ plains: PAL.grass[pi], canyon: PAL.canyon[pi], peaks: PAL.peaks[pi], spire: PAL.spire[pi], forest: PAL.forest[pi] });
+  const rock = mixc({ plains: PAL.rockP, canyon: PAL.rockC, peaks: PAL.rockK, spire: PAL.rockS, forest: PAL.rockF });
   const rk = smooth(0.22, 0.32, slope); c = c.map((v, k) => lerp(v, rock[k] * (0.9 + n * 0.2), rk));
   const snow = smooth(58, 66, h + n * 6) * w.peaks * (1 - rk * 0.6); c = c.map((v, k) => lerp(v, PAL.snow[k], clamp(snow * 1.4)));
   if (h < 2.2) { const s = smooth(2.2, 1.2, h); c = c.map((v, k) => lerp(v, PAL.sand[k], s)); }

@@ -1,7 +1,7 @@
 import type { Game } from "../game/game";
 import { h, $, clear, stars, RCOL } from "./dom";
 import { S, has, addItem, useItem, markDirty, persist, allChars, weaponOf, relicByUid, ownerOfWeapon, ownerOfRelic, exportSave, importSave, resetSave, newWeapon, addChar } from "../game/state";
-import { CHARS, charById, WEAPON_TYPE_NAME } from "../data/characters";
+import { CHARS, charById, WEAPON_TYPE_NAME, ROLE_NAME } from "../data/characters";
 import { weaponById, WEAPONS } from "../data/weapons";
 import { ITEMS, itemById } from "../data/items";
 import { SLOTS, SLOT_NAME, STAT_NAME, FLAT, SETS, setById } from "../data/relics";
@@ -11,6 +11,7 @@ import * as P from "../game/progression";
 import { wish, currentBanner, BANNER_INFO, beg, BEGINNER_MAX, BEGINNER_POOL, type BannerId, type Pull } from "../game/gacha";
 import { consDesc } from "../data/cons";
 import { MAILS } from "../data/mail";
+import { CARDS } from "../data/cards";
 import { charBase } from "../game/stats";
 import { portrait, fullBody, weaponIcon } from "../gfx/charsprite";
 import { mapImage } from "./mapimg";
@@ -32,6 +33,11 @@ export class Menus {
     bus.on("statue", (id: string) => this.statue(id));
     bus.on("domain", (id: string) => this.domain(id));
     bus.on("tower", () => this.tower());
+    bus.on("school", () => this.school());
+    bus.on("eventMenu", () => this.eventMenu());
+    bus.on("cardPick", (cb: () => void) => this.cardPick(cb));
+    bus.on("evFloor", (f: number, loot: string[], last: boolean) => this.evFloor(f, loot, last));
+    bus.on("trialWin", (t: any, first: boolean) => setTimeout(() => this.panel("試練クリア！", h("div", {}, h("p", {}, `「${t.name}」をマスターした！`), h("p", { class: "gdesc" }, REACTIONS[t.key].desc), first ? h("div", { class: "loot" }, h("div", {}, "星晶 ×60"), h("div", {}, "冒険家の手記 ×2")) : h("small", {}, "（報酬は初回のみ）"), h("div", { class: "btns" }, h("button", { class: "primary", onclick: () => { this.close(); this.g.leaveArena(true); this.school(); } }, "学び舎にもどる")))), 600));
     bus.on("arenaWin", (a: any) => this.arenaWin(a));
     bus.on("questDone", (q: any, r: any) => this.banner(`${q.chapter}「${q.title}」完了！`, r.char ? `${charById(r.char).name} が仲間になった！` : "報酬を受け取った"));
     bus.on("chars", () => this.onChange?.()); bus.on("items", () => this.onChange?.());
@@ -45,14 +51,14 @@ export class Menus {
   }
   open(name: string, arg?: any) {
     if (this.g.dialogOpen) return;
-    const f: any = { mail: () => this.mail(), main: () => this.main(), chars: () => this.chars(arg), party: () => this.partyMenu(), gacha: () => this.gacha(), bag: () => this.bag(), quest: () => this.quests(), map: () => this.map(), coop: () => this.coop(), settings: () => this.settings(), shop: () => this.shop() }[name];
+    const f: any = { school: () => this.school(), event: () => this.eventMenu(), mail: () => this.mail(), main: () => this.main(), chars: () => this.chars(arg), party: () => this.partyMenu(), gacha: () => this.gacha(), bag: () => this.bag(), quest: () => this.quests(), map: () => this.map(), coop: () => this.coop(), settings: () => this.settings(), shop: () => this.shop() }[name];
     f?.();
   }
   // ---------------- main ----------------
   main() {
     const g = h("div", { class: "grid" });
     const add = (k: string, ic: string, label: string) => g.append(h("div", { class: "gi", onclick: () => this.open(k) }, h("b", {}, ic), h("span", {}, label)));
-    add("chars", "☺", "キャラクター"); add("party", "◎", "編成"); add("gacha", "✦", "祈願"); add("bag", "▣", "バッグ"); add("quest", "!", "任務・依頼"); add("map", "◈", "マップ"); add("coop", "⇄", "マルチプレイ"); add("mail", "✉", "メール"); add("settings", "⚙", "設定");
+    add("chars", "☺", "キャラクター"); add("party", "◎", "編成"); add("gacha", "✦", "祈願"); add("bag", "▣", "バッグ"); add("quest", "!", "任務・依頼"); add("map", "◈", "マップ"); add("coop", "⇄", "マルチプレイ"); add("school", "❂", "元素の学び舎"); add("event", "✺", "星海の螺旋"); add("settings", "⚙", "設定");
     const need = P.arExpNeed(S.ar);
     this.panel("メニュー", h("div", {}, h("div", { class: "arbox" }, h("div", {}, `冒険ランク ${S.ar}　世界ランク ${P.worldLevel()}`), h("div", { class: "bar" }, h("i", { style: `width:${(S.arExp / need) * 100}%` })), h("small", {}, `${fmt(S.arExp)} / ${fmt(need)}　・　プレイ時間 ${Math.floor(S.stats.play / 3600)}時間${Math.floor((S.stats.play % 3600) / 60)}分`)), g));
   }
@@ -79,7 +85,7 @@ export class Menus {
     const costEl = (c: P.Cost) => h("div", { class: "cost" }, ...Object.entries(c).map(([k, v]) => h("span", { class: has(k) >= v ? "" : "lack" }, `${itemName(k)} ${fmt(has(k))}/${fmt(v)}`)));
     if (this.tab === "info") {
       box.append(row("HP上限", fmt(st.hp)), row("攻撃力", fmt(st.atk)), row("防御力", fmt(st.def)), row("元素熟知", fmt(st.em)), row("会心率", pct(st.cr)), row("会心ダメージ", pct(st.cd)), row("元素チャージ効率", pct(st.er)), row(EL_INFO[d.el].name + "元素ダメージ", pct(st.dmg[d.el])), st.heal ? row("回復効果", pct(st.heal)) : null);
-      box.append(h("p", { class: "bio" }, d.bio));
+      box.append(h("h3", {}, `タイプ：${ROLE_NAME[d.role]}`), ...d.passives.map((p) => h("div", { class: "tal" }, h("div", { class: "tn" }, `固有天賦「${p.name}」`), h("small", {}, p.desc))), h("p", { class: "bio" }, d.bio));
     } else if (this.tab === "level") {
       const cap = ASC_CAP[cs.asc];
       box.append(h("div", { class: "big" }, `Lv. ${cs.lvl} / ${cap}`));
@@ -241,6 +247,7 @@ export class Menus {
     const art = fullBody(d.look, d.weapon, 4, d.id); art.className = "fullart";
     body.append(h("div", { class: "chead" }, art, h("div", {}, h("div", { class: "cname" }, d.name, h("small", { style: `color:${RCOL[d.rarity]}` }, " " + stars(d.rarity))), h("div", { class: "ctitle" }, d.title), h("div", { class: "ctags" }, h("span", { class: "eltag", style: `background:${EL_INFO[d.el].color}` }, EL_INFO[d.el].name), h("span", {}, WEAPON_TYPE_NAME[d.weapon]), d.limited ? h("span", {}, "期間限定") : null), h("p", { class: "bio" }, d.bio))));
     body.append(h("h3", {}, "Lv.90のステータス（武器・遺紋なし）"), h("div", { class: "ctab" }, ...[["HP", fmt(b90.hp)], ["攻撃力", fmt(b90.atk)], ["防御力", fmt(b90.def)], ["突破ボーナス", `${STAT_NAME[d.asc.k] || d.asc.k} +${FLAT.has(d.asc.k) ? d.asc.v : pct(d.asc.v)}`]].map(([k, v]) => h("div", { class: "row" }, h("span", {}, k), h("b", {}, v)))));
+    body.append(h("h3", {}, `タイプ：${ROLE_NAME[d.role]}`), ...d.passives.map((p) => h("div", { class: "tal" }, h("div", { class: "tn" }, `固有天賦「${p.name}」`), h("small", {}, p.desc))));
     body.append(h("h3", {}, "天賦"), h("div", { class: "tal" }, h("div", { class: "tn" }, "通常攻撃"), h("small", {}, WEAPON_TYPE_NAME[d.weapon] + "の連続攻撃。長押しで重撃、空中で落下攻撃。")), h("div", { class: "tal" }, h("div", { class: "tn" }, `元素スキル「${d.skill.name}」`), h("small", {}, `${d.skill.desc}（クールタイム${d.skill.cd}秒）`)), h("div", { class: "tal" }, h("div", { class: "tn" }, `元素爆発「${d.burst.name}」`), h("small", {}, `${d.burst.desc}（元素エネルギー${d.burst.cost}）`)));
     body.append(h("h3", {}, "覚醒"));
     const have = S.chars[id]?.cons ?? -1;
@@ -284,10 +291,7 @@ export class Menus {
     ensureDaily(); const body = h("div", {}); this.panel("任務・依頼", body, "wide");
     const render = () => {
       clear(body); const q = curQuest(), st = curStep();
-      body.append(h("h3", {}, "メインストーリー"));
-      if (q) body.append(h("div", { class: "qcard" }, h("b", {}, `${q.chapter}「${q.title}」`), ...q.steps.map((s, i) => h("div", { class: i < S.quest.step ? "done" : i === S.quest.step ? "now" : "todo" }, (i < S.quest.step ? "✓ " : i === S.quest.step ? "◆ " : "・ ") + s.text))));
-      else body.append(h("p", {}, "メインストーリーはすべてクリアしました！"));
-      body.append(h("small", {}, `進行度 ${Math.min(MAIN.length, S.quest.main)} / ${MAIN.length} 章`));
+      body.append(h("h3", {}, "冒険の手引き"), h("div", { class: "qcard" }, h("div", {}, "・星晶は、敵や宝箱、ボス（初めて倒すと星晶800！）、秘境、星の塔、イベントで手に入るよ"), h("div", {}, "・元素反応がわからないときは「元素の学び舎」へ"), h("div", {}, "・毎週かわるイベント「星海の螺旋」はマルチでも遊べる")));
       body.append(h("h3", {}, "毎日の依頼"));
       S.daily.tasks.forEach((t, i) => body.append(h("div", { class: "daily" }, h("span", {}, t.text), h("small", {}, `${t.n}/${t.goal}`), h("button", { disabled: t.n < t.goal || S.daily.claimed[i], onclick: () => { claimDaily(i); render(); } }, S.daily.claimed[i] ? "受取済" : "受け取る"))));
       body.append(h("button", { class: "primary", disabled: S.daily.bonus || !S.daily.claimed.every((c) => c), onclick: () => { claimDailyBonus(); render(); } }, S.daily.bonus ? "ボーナス受取済" : "全部達成ボーナス（星晶100）"));
@@ -440,6 +444,48 @@ export class Menus {
     }
     markDirty();
     setTimeout(() => this.panel("クリア！", h("div", {}, h("div", { class: "loot" }, ...loot.map((l) => h("div", {}, l))), h("div", { class: "btns" }, h("button", { class: "primary", onclick: () => { this.close(); if (g.arena) g.leaveArena(true); } }, "外に出る"), a.kind === "domain" && g.role !== "guest" ? h("button", { onclick: () => { this.close(); g.leaveArena(true); setTimeout(() => g.startDomain(a.id, a.lv), 300); } }, "もう一度") : null))), 900);
+  }
+  school() {
+    const body = h("div", { class: "school" }), done = (S.flags.trials ||= {});
+    body.append(h("h3", {}, "元素反応ってなに？"),
+      h("p", { class: "bio" }, "敵に元素がついている状態（頭の上にマークが出る）で、ちがう元素の攻撃を当てると「元素反応」が起きるよ。反応ごとに、大ダメージ・敵を凍らせる・回復・シールド・敵を吸い寄せるなど、特別な効果があるんだ。"),
+      h("p", { class: "bio" }, "やり方：①1人目で敵に元素をつける → ②キャラを交代する → ③ちがう元素で攻撃！ 焔・潮・雷・霜・星・影の6元素で、全部で15種類の反応があるよ。"),
+      h("p", { class: "gdesc" }, `試練をクリアすると星晶60がもらえるよ（初回のみ）。クリア：${Object.keys(done).length} / ${Object.keys(REACTIONS).length}`));
+    const list = h("div", { class: "trials" });
+    for (const [k, r] of Object.entries(REACTIONS)) {
+      const [a, b] = k.split("+");
+      list.append(h("div", { class: "trial" + (done[k] ? " done" : ""), style: `--c:${r.color}`, onclick: () => this.trialIntro(k) }, h("div", { class: "tr-el" }, h("span", { style: `background:${(EL_INFO as any)[a].color}` }, (EL_INFO as any)[a].name), "＋", h("span", { style: `background:${(EL_INFO as any)[b].color}` }, (EL_INFO as any)[b].name)), h("b", {}, r.name), h("small", {}, r.desc), done[k] ? h("i", {}, "✓ クリア") : null));
+    }
+    body.append(list); this.panel("元素の学び舎", body, "wide");
+  }
+  trialIntro(k: string) {
+    const r = REACTIONS[k], [a, b] = k.split("+"), A = (EL_INFO as any)[a].name, B = (EL_INFO as any)[b].name;
+    const kindText: Record<string, string> = { amp: "その一撃のダメージが何倍にもなる「増幅」タイプ。強い攻撃で起こすとお得！", aoe: "爆発して周りの敵にもダメージを与える「範囲」タイプ。敵が集まっているときに強い！", dot: "時間をかけてダメージを与え続ける「継続」タイプ。", freeze: "敵を凍らせて動けなくする「拘束」タイプ。その間は攻撃し放題！", slow: "敵を弱らせる「弱体」タイプ。攻撃力と速さが下がる。", heal: "チーム全員を回復する「回復」タイプ。", shield: "自分にシールドを張る「防御」タイプ。", pull: "周りの敵を1か所に吸い寄せる「集敵」タイプ。範囲攻撃と相性ばつぐん！", resdown: "敵の耐性を下げてダメージを通りやすくする「弱体」タイプ。", buff: "大ダメージに加えて、しばらく会心率が上がる「強化」タイプ。", chain: "近くの敵に次々とダメージが飛ぶ「連鎖」タイプ。", energy: "爆発に加えてチーム全員の元素エネルギーを回復する「エネルギー」タイプ。" };
+    this.dialog([["先生のアオバ", `今日は「${r.name}」を学ぼう！ ${A}元素と${B}元素を組み合わせると起きる反応だよ。`], ["先生のアオバ", `効果：${r.desc}。${kindText[r.kind] || ""}`], ["先生のアオバ", `${A}元素のキャラで敵（かかし）に元素をつけて、${B}元素のキャラに交代して攻撃してみて。逆の順番でもOK！ 3回起こせたらクリアだよ。キャラは試練用に貸してあげるね。`]], () => this.g.startTrial(k));
+  }
+  eventMenu() {
+    const g = this.g, wk = g.weekSeed(), st = S.flags.ev && S.flags.ev.week === wk ? S.flags.ev.cleared : {};
+    const body = h("div", {});
+    body.append(h("p", { class: "bio" }, "全12層の塔を登るイベント。各層のはじめに3枚のカードから1枚選んで、チームを強化しよう。カードはその挑戦の間ずっと重なっていくよ。4層ごとにボスが待っている！"),
+      h("p", { class: "bio" }, "マルチプレイでも2人で一緒に挑戦できる（カードはそれぞれ選ぶ）。層をクリアするたびに報酬。毎週はじめてのクリアなら星晶もたくさん！ 敵の顔ぶれは毎週かわるよ。"),
+      h("p", { class: "gdesc" }, `今週クリアした層：${Object.keys(st).length} / 12`),
+      h("button", { class: "primary", onclick: () => { this.close(); g.startEvent(); } }, g.role === "guest" ? "ホストに挑戦をお願いする" : "挑戦する"));
+    this.panel("星海の螺旋", body);
+  }
+  cardPick(cb: () => void) {
+    const g = this.g, ids = g.offerCards(), ov = h("div", { class: "cardov" });
+    ov.append(h("div", { class: "ct" }, `第${g.ev?.floor || 1}層：強化カードを1枚選ぼう`), h("div", { class: "cards" }, ...ids.map((id) => { const c = (CARDS as any[]).find((x) => x.id === id); return h("div", { class: "card", onclick: () => { ov.remove(); g.paused = false; g.pickCard(id); cb(); } }, h("b", {}, c.icon), h("div", { class: "cn" }, c.name), h("small", {}, c.desc)); })),
+      g.ev && g.ev.picks.length ? h("small", { class: "picked" }, "これまでのカード：" + g.ev.picks.map((p) => (CARDS as any[]).find((x) => x.id === p).name).join("・")) : "");
+    this.cur?.remove(); this.cur = null; this.ui.append(ov); g.paused = g.role === "solo";
+  }
+  evFloor(f: number, loot: string[], last: boolean) {
+    const g = this.g;
+    setTimeout(() => {
+      const body = h("div", {}, h("div", { class: "loot" }, ...loot.map((l) => h("div", {}, l))));
+      if (last) body.append(h("p", {}, "全12層クリア！ おめでとう！"), h("button", { class: "primary", onclick: () => { this.close(); if (g.arena) g.leaveArena(true); } }, "外に出る"));
+      else body.append(h("div", { class: "btns" }, h("button", { class: "primary", onclick: () => { this.close(); this.cardPick(() => { if (g.role !== "guest") g.nextEventFloor(); }); } }, "次の層へ（カードを選ぶ）"), g.role !== "guest" ? h("button", { onclick: () => { this.close(); g.leaveArena(true); } }, "ここでやめる") : null));
+      this.panel(`第${f}層クリア！`, body);
+    }, 800);
   }
   banner(t: string, sub: string) { const b = h("div", { class: "banner" }, h("b", {}, t), h("small", {}, sub)); this.ui.append(b); setTimeout(() => b.classList.add("out"), 3200); setTimeout(() => b.remove(), 4000); }
 }
