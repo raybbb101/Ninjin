@@ -8,6 +8,7 @@ import { curStep, curQuest, stepPos } from "../game/quests";
 import { HALF } from "../world/terrain";
 import { POIS } from "../world/worldgen";
 import { mapImage } from "./mapimg";
+import { skillIcon } from "./icons";
 
 export class Hud {
   root = $("#hud"); joyBase: HTMLElement; joyKnob: HTMLElement; btn: Record<string, HTMLElement> = {}; party: HTMLElement; inter: HTMLElement; toastBox: HTMLElement; quest: HTMLElement; boss: HTMLElement; mini: HTMLCanvasElement; coopTag: HTMLElement;
@@ -16,7 +17,7 @@ export class Hud {
     const r = this.root; clear(r);
     this.joyBase = h("div", { class: "joy" }); this.joyKnob = h("div", { class: "knob" }); this.joyBase.append(this.joyKnob); r.append(this.joyBase);
     const mk = (k: string, cls: string, label: string) => { const b = h("div", { class: "btn " + cls }, h("span", {}, label)); r.append(b); this.btn[k] = b; return b; };
-    mk("atk", "b-atk", "攻撃"); mk("e", "b-e", "E"); mk("q", "b-q", "Q"); mk("jump", "b-jump", "跳"); mk("sprint", "b-sprint", "走");
+    mk("atk", "b-atk", "攻撃"); mk("e", "b-e", ""); mk("q", "b-q", ""); mk("jump", "b-jump", "跳"); mk("sprint", "b-sprint", "走");
     this.btn.e.append(h("i", { class: "cd" }), h("b", { class: "cdt" })); this.btn.q.append(h("i", { class: "en" }));
     this.party = h("div", { class: "party" }); r.append(this.party);
     this.inter = h("div", { class: "inter" }); r.append(this.inter);
@@ -78,7 +79,7 @@ export class Hud {
     addEventListener("keyup", (e) => { const k = e.key.toLowerCase(); this.keys.delete(k); if (k === "shift") I.sprint = false; this.keyMove(); });
   }
   keyMove() { if (this.joyId >= 0) return; const k = this.keys, I = this.g.input; I.mx = (k.has("d") ? 1 : 0) - (k.has("a") ? 1 : 0); I.my = (k.has("s") ? 1 : 0) - (k.has("w") ? 1 : 0); const l = Math.hypot(I.mx, I.my); if (l > 1) { I.mx /= l; I.my /= l; } }
-  private interKey = ""; private qKey = ""; private miniT = 0;
+  private iconFor = ""; private interKey = ""; private qKey = ""; private miniT = 0;
   update(dt: number, fps: number) {
     const g = this.g, m = g.cur, p = g.player;
     // skill buttons
@@ -86,6 +87,7 @@ export class Hud {
     (e.querySelector(".cd") as HTMLElement).style.background = m.cdE > 0 ? `conic-gradient(rgba(0,0,0,.6) ${cd * 360}deg, transparent 0)` : "none";
     (e.querySelector(".cdt") as HTMLElement).textContent = m.cdE > 0 ? m.cdE.toFixed(1) : "";
     e.style.setProperty("--c", EL_INFO[m.def.el].color);
+    if (this.iconFor !== m.id) { this.iconFor = m.id; const col = EL_INFO[m.def.el].color; (e.firstElementChild as HTMLElement).style.backgroundImage = `url(${skillIcon(m.def.skill.kind, col)})`; (this.btn.q.firstElementChild as HTMLElement).style.backgroundImage = `url(${skillIcon(m.def.burst.kind, col, true)})`; }
     const q = this.btn.q, en = m.energy / m.maxEnergy; q.style.setProperty("--c", EL_INFO[m.def.el].color);
     (q.querySelector(".en") as HTMLElement).style.background = `conic-gradient(${EL_INFO[m.def.el].color} ${en * 360}deg, rgba(255,255,255,.12) 0)`; q.classList.toggle("ready", en >= 1);
     this.btn.jump.firstElementChild!.textContent = p.mode === "air" ? "翔" : p.mode === "glide" ? "降" : p.mode === "climb" ? "登" : "跳";

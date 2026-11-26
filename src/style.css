@@ -29,21 +29,21 @@ input { font: inherit; padding: 8px 12px; border-radius: 10px; border: 1px solid
 .btn { position: absolute; border-radius: 50%; background: rgba(20, 18, 36, .45); border: 2px solid rgba(255,255,255,.55); display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; text-shadow: 0 1px 2px #000; touch-action: none; }
 .btn.on { transform: scale(.92); background: rgba(255,255,255,.25); }
 .btn span { position: relative; z-index: 2; }
-.b-atk { right: calc(40px + var(--sr)); bottom: calc(40px + var(--sb)); width: 84px; height: 84px; font-size: 17px; }
-.b-e { right: calc(140px + var(--sr)); bottom: calc(30px + var(--sb)); width: 64px; height: 64px; font-size: 22px; border-color: var(--c, #fff); overflow: hidden; }
-.b-q { right: calc(134px + var(--sr)); bottom: calc(118px + var(--sb)); width: 70px; height: 70px; font-size: 24px; overflow: visible; }
-.b-q .en { position: absolute; inset: -5px; border-radius: 50%; z-index: 0; -webkit-mask: radial-gradient(circle, transparent 34px, #000 35px); mask: radial-gradient(circle, transparent 34px, #000 35px); }
+.b-atk { right: calc(24px + var(--sr)); bottom: calc(20px + var(--sb)); width: 78px; height: 78px; font-size: 16px; }
+.b-e { right: calc(180px + var(--sr)); bottom: calc(16px + var(--sb)); width: 60px; height: 60px; font-size: 22px; border-color: var(--c, #fff); overflow: hidden; }
+.b-q { right: calc(170px + var(--sr)); bottom: calc(86px + var(--sb)); width: 64px; height: 64px; font-size: 24px; overflow: visible; }
+.b-q .en { position: absolute; inset: -5px; border-radius: 50%; z-index: 0; -webkit-mask: radial-gradient(circle, transparent 32px, #000 33px); mask: radial-gradient(circle, transparent 32px, #000 33px); }
 .b-q.ready { box-shadow: 0 0 18px var(--c); background: rgba(255,255,255,.18); animation: pulse 1s infinite; }
 @keyframes pulse { 50% { box-shadow: 0 0 4px var(--c); } }
 .b-e .cd { position: absolute; inset: 0; border-radius: 50%; z-index: 1; } .b-e .cdt { position: absolute; z-index: 3; font-size: 15px; bottom: 6px; }
-.b-jump { right: calc(58px + var(--sr)); bottom: calc(140px + var(--sb)); width: 56px; height: 56px; font-size: 18px; }
-.b-sprint { right: calc(8px + var(--sr)); bottom: calc(112px + var(--sb)); width: 48px; height: 48px; font-size: 15px; }
+.b-jump { right: calc(110px + var(--sr)); bottom: calc(12px + var(--sb)); width: 54px; height: 54px; font-size: 18px; }
+.b-sprint { right: calc(124px + var(--sr)); bottom: calc(74px + var(--sb)); width: 46px; height: 46px; font-size: 15px; }
 /* party */
-.party { position: absolute; right: calc(8px + var(--sr)); top: 22%; display: flex; flex-direction: column; gap: 6px; }
+.party { position: absolute; right: calc(6px + var(--sr)); top: calc(62px + var(--st)); display: flex; flex-direction: column; gap: 3px; }
 .pm { position: relative; display: flex; align-items: center; gap: 6px; padding: 3px 4px 3px 10px; border-radius: 26px 4px 4px 26px; background: linear-gradient(90deg, transparent, rgba(10, 8, 24, .55)); flex-direction: row; justify-content: flex-end; }
 .pm .pn { font-size: 12px; text-shadow: 0 1px 2px #000; display: flex; gap: 4px; align-items: center; }
 .pm .num { font-size: 10px; background: rgba(255,255,255,.2); border-radius: 4px; padding: 0 4px; }
-.pm .pp { width: 44px; height: 44px; image-rendering: pixelated; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.4); }
+.pm .pp { width: 38px; height: 38px; image-rendering: pixelated; border-radius: 50%; background: rgba(255,255,255,.15); border: 2px solid rgba(255,255,255,.4); }
 .pm.act .pp { border-color: var(--gold); background: rgba(240, 213, 138, .35); }
 .pm.act { background: linear-gradient(90deg, transparent, rgba(240,213,138,.3)); }
 .pm.dead { opacity: .4; filter: grayscale(1); }
@@ -124,3 +124,7 @@ h3 { color: var(--gold); font-size: 15px; margin: 14px 0 6px; } .daily { display
   .dlg { min-height: 90px; padding: 8px; } .dlg canvas { width: 64px; height: 64px; } .dt p { font-size: 14px; margin: 3px 0; }
   .clist { width: 104px; }
 }
+
+.b-e > span, .b-q > span { width: 100%; height: 100%; background: center / 70% no-repeat; display: block; }
+.b-q > span { border-radius: 50%; }
+@media (min-height: 520px) { .party { top: 22%; gap: 6px; } .pm .pp { width: 44px; height: 44px; } }

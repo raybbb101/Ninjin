@@ -28,7 +28,10 @@ function pose(f: number, dir: Dir, wt: WeaponType): Pose {
       p.wShow = "hand"; const big = wt === "claymore";
       if (dir === 2) { p.hand = [[-3, -6], [7, 0], [6, 3]][k] as any; p.wAng = [-2.3, 0.1, 1.0][k]; p.sL = [0, 2, 2][k]; p.sR = [0, -2, -1][k]; p.lean = [-1, 1, 1][k]; }
       else { p.hand = [[6, -6], [-5, 1], [-6, 3]][k] as any; p.wAng = [-1.9, 2.6, 2.9][k]; }
-      if (wt === "polearm") { p.wAng = dir === 2 ? [Math.PI, 0, 0.15][k] : [-1.6, 2.4, 2.9][k]; if (dir === 2) p.hand = [[-2, 0], [8, 0], [9, 1]][k] as any; }
+      if (wt === "polearm") { // thrust, not a swing
+        if (dir === 2) { p.wAng = [0, 0, 0.05][k]; p.hand = [[-4, 0], [9, 0], [7, 1]][k] as any; p.lean = [-1, 1, 1][k]; p.sL = [0, 3, 2][k]; p.sR = [0, -2, -1][k]; }
+        else { p.wAng = [1.25, 1.05, 1.1][k]; p.hand = [[4, -3], [6, 3], [6, 2]][k] as any; }
+      }
       if (big) p.bob = k === 1 ? 1 : 0;
     }
   }

@@ -87,8 +87,10 @@ export function normalAttack(g: Game, m: Member, step: number, charged: boolean)
     return;
   }
   const r = t.r * (charged ? 1.15 : 1), c = p.pos.clone().add(new THREE.Vector3(fx * r * 0.45, 0, fz * r * 0.45));
-  g.fxAt("crescent", c.clone().setY(c.y + 0.2), el, m.def.weapon === "claymore" ? 1.3 : 1, step % 2 === 1);
-  g.hitArc(p.pos, p.face, r, 1.2, makeHit(g, m, mv, el, cat, "na", 2.5, { kb: m.def.weapon === "claymore" ? 0.8 : 0.25 }));
+  const pole = m.def.weapon === "polearm";
+  if (pole) { const tip = p.pos.clone().add(new THREE.Vector3(fx * r * 0.85, 0.9, fz * r * 0.85)); g.fxAt("hit-spark", tip, el, 0.7); g.fxAt("orb", p.pos.clone().add(new THREE.Vector3(fx * r * 0.5, 0.9, fz * r * 0.5)), el, 0.8, (fx * Math.cos(g.camYaw) - fz * Math.sin(g.camYaw)) < 0, { life: 0.12, loop: true }); }
+  else g.fxAt("crescent", c.clone().setY(c.y + 0.2), el, m.def.weapon === "claymore" ? 1.3 : 1, step % 2 === 1);
+  g.hitArc(p.pos, p.face, r, pole ? 0.6 : 1.2, makeHit(g, m, mv, el, cat, "na", 2.5, { kb: m.def.weapon === "claymore" ? 0.8 : 0.25 }));
   g.gainEnergy(0.4, m);
 }
 export function plunge(g: Game, m: Member) {
