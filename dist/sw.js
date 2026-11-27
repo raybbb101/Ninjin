@@ -1,5 +1,5 @@
 // NINJIN service worker: cache-first for game files so it starts fast and works offline (solo).
-const CACHE = "ninjin-mwxml6da";
+const CACHE = "ninjin-mwyxazy8";
 self.addEventListener("install", (e) => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "./index.html", "./manifest.webmanifest"]).catch(() => {}))); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim())); });
 self.addEventListener("fetch", (e) => {

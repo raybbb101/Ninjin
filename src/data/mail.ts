@@ -1,5 +1,7 @@
 export interface Mail { id: string; from: string; title: string; body: string; items: Record<string, number>; date: string }
 export const MAILS: Mail[] = [
+  { id: "apology_renewal", from: "NINJIN運営", date: "2026/11/27", title: "再リニューアルのお知らせとお詫び", items: { gem: 80000 },
+    body: "いつもNINJINを遊んでくれてありがとう！\n\nNINJINは、これからもう一度大きなリニューアルを予定しています。\nご迷惑をおかけしてごめんなさい。\n\nお詫びとして、祈願500回分の星晶を贈ります。\nこれからもよろしくね！" },
   { id: "update_v04", from: "NINJIN運営", date: "2026/11/26", title: "大型アップデートのお知らせとプレゼント", items: { gem: 16000 },
     body: "いつもNINJINを遊んでくれてありがとう！\n\n大型アップデートを行いました。\n・マップが広くなり「木漏れ日の森」が登場\n・キャラクターが26人に！ 全員のスキルをリニューアル、固有天賦も追加\n・祈願をリニューアル（全キャラ恒常、元素ごとのキャラ祈願、★5の指定）\n・交換所、元素の学び舎、イベント「星海の螺旋」を追加\n\nアップデート記念として、祈願100回分の星晶を贈ります。" },
   { id: "apology_v02", from: "NINJIN運営", date: "2026/11/26", title: "バランス調整とメンテナンスのお詫び", items: { gem: 8000 },
